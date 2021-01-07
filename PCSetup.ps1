@@ -4,12 +4,13 @@ function SetPCName {
     # In our MSP we designate all systems in the format devicetype-companyname-assetid for example DT-MSP-000001 keep in mind that this is the maximum length Windows allows for system names
     # This function creates VisualBasic pop-up prompts which ask for this information to be input. You can hange these as needed to suite your MSP
     Add-Type -AssemblyName Microsoft.VisualBasic
-    $DeviceType = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Device Type (LT or DT)', 'Device Type')
+    $DeviceType = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Device Type (L or D)', 'Device Type')
     $CompanyName = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Company Initials (Max 4 letters)', 'Company Initials')
-    $AssetID = [Microsoft.VisualBasic.Interaction]::InputBox('Enter a Asset ID', 'Asset ID')
+    $LocationName = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Location Initials (Max 3 letters)', 'Location Initials')
+    $AssetID = [Microsoft.VisualBasic.Interaction]::InputBox('Enter a Asset ID (Max 5 digits)', 'Asset ID')
     Write-Output "The asset ID is $AssetID"
-    Write-Output "$DeviceType-$CompanyName-$AssetID"
-    Rename-Computer -NewName "$DeviceType-$CompanyName-$AssetID"
+    Write-Output "$CompanyName-$LcoationName-$DeviceType$AssetID"
+    Rename-Computer -NewName "$CompanyName-$LocationName-$DeviceType$AssetID"
 }
 
 function InstallChoco {
@@ -24,10 +25,10 @@ function InstallChoco {
 
 function InstallApps {
     # Install the first set of applications. these are quick so ive added them separately
-    choco install adobereader 7zip microsoft-edge -y
+    choco install googlechrome zoom adobereader 7zip microsoft-edge firefox notepadplusplus unchecky -y
     # Install Office365 applications. This takes a while so is done separately. You can change the options here by following the instructions here: https://chocolatey.org/packages/microsoft-office-deployment
-    choco install microsoft-office-deployment --params="'/Channel:Monthly /Language:en-us /64bit /Product:O365BusinessRetail /Exclude:Lync,Groove'" -y
-    #choco install microsoft-office-deployment --params="'/Channel:Monthly /Language:en-us /Product:O365BusinessRetail /Exclude:Lync,Groove'" -y
+    # choco install microsoft-office-deployment --params="'/Channel:Monthly /Language:en-us /64bit /Product:O365BusinessRetail /Exclude:Lync,Groove'" -y
+    choco install microsoft-office-deployment --params="'/Channel:Monthly /Language:en-us /Product:O365BusinessRetail /Exclude:Lync,Groove'" -y
 }
 
 function ReclaimWindows10 {
@@ -72,8 +73,8 @@ function ReclaimWindows10 {
     # Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AppHost" -Name "EnableWebContentEvaluation"
 
     # Disable Bing Search in Start Menu
-    Write-Host "Disabling Bing Search in Start Menu..."
-    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -Type DWord -Value 0
+    # Write-Host "Disabling Bing Search in Start Menu..."
+    # Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -Type DWord -Value 0
 
     # Enable Bing Search in Start Menu
     # Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled"
@@ -129,6 +130,14 @@ function ReclaimWindows10 {
     # Set-ItemProperty -Path "HKCU:\Software\Microsoft\InputPersonalization" -Name "RestrictImplicitInkCollection" -Type DWord -Value 0
     # Remove-ItemProperty -Path "HKCU:\Software\Microsoft\InputPersonalization\TrainedDataStore" -Name "HarvestContacts"
 
+	#From Remove Windows10 Bloatware
+	#Stops Cortana from being used as part of your Windows Search Function
+	Write-Host "Stopping Cortana from being used as part of your Windows Search Function"
+	$Search = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search'
+	If (Test-Path $Search) {
+		Set-ItemProperty $Search AllowCortana -Value 0
+	}
+          
     # Restrict Windows Update P2P only to local network
     Write-Host "Restricting Windows Update P2P only to local network..."
     Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config" -Name "DODownloadMode" -Type DWord -Value 1
@@ -172,7 +181,40 @@ function ReclaimWindows10 {
     # Start-Service "dmwappushservice"
     # Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\dmwappushservice" -Name "DelayedAutoStart" -Type DWord -Value 1
 
+	#From Remove Windows10 Bloatware
+	Write-Host "Adding Registry key to prevent bloatware apps from returning"
+	#Prevents bloatware applications from returning
+	$registryPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent"
+	If (!(Test-Path $registryPath)) {
+		Mkdir $registryPath
+		New-ItemProperty $registryPath DisableWindowsConsumerFeatures -Value 1 
+	}          
 
+	#From Remove Windows10 Bloatware
+	Write-Host "Setting Mixed Reality Portal value to 0 so that you can uninstall it in Settings"
+	$Holo = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Holographic'    
+	If (Test-Path $Holo) {
+		Set-ItemProperty $Holo FirstRunSucceeded -Value 0
+	}
+      
+	#From Remove Windows10 Bloatware
+	#Loads the registry keys/values below into the NTUSER.DAT file which prevents the apps from redownloading. Credit to a60wattfish
+	reg load HKU\Default_User C:\Users\Default\NTUSER.DAT
+	Set-ItemProperty -Path Registry::HKU\Default_User\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name SystemPaneSuggestionsEnabled -Value 0
+	Set-ItemProperty -Path Registry::HKU\Default_User\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name PreInstalledAppsEnabled -Value 0
+	Set-ItemProperty -Path Registry::HKU\Default_User\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager -Name OemPreInstalledAppsEnabled -Value 0
+	reg unload HKU\Default_User
+      
+ 	#From Remove Windows10 Bloatware
+	#Disables scheduled tasks that are considered unnecessary 
+	Write-Host "Disabling scheduled tasks"
+	#Get-ScheduledTask -TaskName XblGameSaveTaskLogon | Disable-ScheduledTask
+	Get-ScheduledTask -TaskName XblGameSaveTask | Disable-ScheduledTask
+	Get-ScheduledTask -TaskName Consolidator | Disable-ScheduledTask
+	Get-ScheduledTask -TaskName UsbCeip | Disable-ScheduledTask
+	Get-ScheduledTask -TaskName DmClient | Disable-ScheduledTask
+	Get-ScheduledTask -TaskName DmClientOnScenarioDownload | Disable-ScheduledTask
+	}
 
     ##########
     # Service Tweaks
@@ -199,7 +241,7 @@ function ReclaimWindows10 {
     # Set-NetFirewallProfile -Profile * -Enabled False
 
     # Enable Firewall
-    # Set-NetFirewallProfile -Profile * -Enabled True
+    Set-NetFirewallProfile -Profile * -Enabled True
 
     # Disable Windows Defender
     # Write-Host "Disabling Windows Defender..."
@@ -240,8 +282,8 @@ function ReclaimWindows10 {
     # Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Type DWord -Value 0
 
     # Disable Remote Desktop
-    # Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Type DWord -Value 1
-    # Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Type DWord -Value 1
+    Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Type DWord -Value 1
+    Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Type DWord -Value 1
 
 
 
@@ -296,18 +338,18 @@ function ReclaimWindows10 {
     # Set-ItemProperty -Path "HKCU:\Control Panel\Accessibility\StickyKeys" -Name "Flags" -Type String -Value "510"
 
     # Hide Search button / box
-    Write-Host "Hiding Search Box / Button..."
-    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Type DWord -Value 0
+    # Write-Host "Hiding Search Box / Button..."
+    # Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Type DWord -Value 0
 
     # Show Search button / box
     # Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode"
 
     # Hide Task View button
-    Write-Host "Hiding Task View button..."
-    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton" -Type DWord -Value 0
+    # Write-Host "Hiding Task View button..."
+    # Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton" -Type DWord -Value 0
 
     # Show Task View button
-    # Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton"
+    Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton"
 
     # Show small icons in taskbar
     # Write-Host "Showing small icons in taskbar..."
@@ -472,38 +514,125 @@ function ReclaimWindows10 {
     # }
     # Start-Process $onedrive -NoNewWindow
 
-    # Uninstall default Microsoft applications
-    Write-Host "Uninstalling default Microsoft applications..."
-    Get-AppxPackage "Microsoft.3DBuilder" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.BingFinance" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.BingNews" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.BingSports" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.BingWeather" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.Getstarted" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.MicrosoftOfficeHub" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.MicrosoftSolitaireCollection" | Remove-AppxPackage
-    # Get-AppxPackage "Microsoft.Office.OneNote" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.People" | Remove-AppxPackage
-    # Get-AppxPackage "Microsoft.SkypeApp" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.Windows.Photos" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.WindowsAlarms" | Remove-AppxPackage
-    # Get-AppxPackage "Microsoft.WindowsCamera" | Remove-AppxPackage
-    # Get-AppxPackage "microsoft.windowscommunicationsapps" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.WindowsMaps" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.WindowsPhone" | Remove-AppxPackage
-    # Get-AppxPackage "Microsoft.WindowsSoundRecorder" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.XboxApp" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.ZuneMusic" | Remove-AppxPackage
-    Get-AppxPackage "Microsoft.ZuneVideo" | Remove-AppxPackage
-    # Get-AppxPackage "Microsoft.AppConnector" | Remove-AppxPackage
-    # Get-AppxPackage "Microsoft.ConnectivityStore" | Remove-AppxPackage
-    # Get-AppxPackage "Microsoft.Office.Sway" | Remove-AppxPackage
-    # Get-AppxPackage "Microsoft.Messaging" | Remove-AppxPackage
-    # Get-AppxPackage "Microsoft.CommsPhone" | Remove-AppxPackage
-    # Get-AppxPackage "9E2F88E3.Twitter" | Remove-AppxPackage
-    Get-AppxPackage "king.com.CandyCrushSodaSaga" | Remove-AppxPackage
-    Get-AppxPackage "king.com.CandyCrushSaga" | Remove-AppxPackage
-    Get-AppxPackage "king.com.CandyCrushFriends" | Remove-AppxPackage
+	## ## ## ## ## ## ## ## ## ##
+	#From "Remove Windows10Bloatware.ps1" script
+            $Bloatware = @(
+    
+                #Unnecessary Windows 10 AppX Apps
+                "Microsoft.BingNews"
+                "Microsoft.GetHelp"
+                "Microsoft.Getstarted"
+                #"Microsoft.Messaging"
+                "Microsoft.Microsoft3DViewer"
+                "Microsoft.MicrosoftOfficeHub"
+                "Microsoft.MicrosoftSolitaireCollection"
+                "Microsoft.NetworkSpeedTest"
+                "Microsoft.News"
+                #"Microsoft.Office.Lens"
+                #"Microsoft.Office.OneNote"
+                #"Microsoft.Office.Sway"
+                "Microsoft.OneConnect"
+                "Microsoft.People"
+                "Microsoft.Print3D"
+                "Microsoft.RemoteDesktop"
+                #"Microsoft.SkypeApp"
+                "Microsoft.StorePurchaseApp"
+                "Microsoft.Office.Todo.List"
+                "Microsoft.Whiteboard"
+                "Microsoft.WindowsAlarms"
+                #"Microsoft.WindowsCamera"
+                #"microsoft.windowscommunicationsapps"
+                "Microsoft.WindowsFeedbackHub"
+                "Microsoft.WindowsMaps"
+                #"Microsoft.WindowsSoundRecorder"
+                "Microsoft.Xbox.TCUI"
+                "Microsoft.XboxApp"
+                "Microsoft.XboxGameOverlay"
+                "Microsoft.XboxIdentityProvider"
+                "Microsoft.XboxSpeechToTextOverlay"
+                "Microsoft.ZuneMusic"
+                "Microsoft.ZuneVideo"
+
+				#From MatStocks PC Build Script
+				"Microsoft.3DBuilder"
+				"Microsoft.WindowsPhone"
+				#"Microsoft.AppConnector"
+				#"Microsoft.ConnectivityStore"
+				#"Microsoft.CommsPhone"
+
+				
+				
+                #Sponsored Windows 10 AppX Apps
+                #Add sponsored/featured apps to remove in the "*AppName*" format
+                "*EclipseManager*"
+                "*ActiproSoftwareLLC*"
+                "*AdobeSystemsIncorporated.AdobePhotoshopExpress*"
+                "*Duolingo-LearnLanguagesforFree*"
+                "*PandoraMediaInc*"
+                "*CandyCrush*"
+                "*Wunderlist*"
+                "*Flipboard*"
+                "*Twitter*"
+                "*Facebook*"
+                "*Spotify*"
+                "*Minecraft*"
+                "*Royal Revolt*"
+                "*Sway*"
+                "*Dolby*"
+                "*Windows.CBSPreview*"
+                
+                #Optional: Typically not removed but you can if you need to for some reason
+                #"*Microsoft.Advertising.Xaml_10.1712.5.0_x64__8wekyb3d8bbwe*"
+                #"*Microsoft.Advertising.Xaml_10.1712.5.0_x86__8wekyb3d8bbwe*"
+                #"*Microsoft.BingWeather*"
+                #"*Microsoft.MSPaint*"
+                #"*Microsoft.MicrosoftStickyNotes*"
+                #"*Microsoft.Windows.Photos*"
+                #"*Microsoft.WindowsCalculator*"
+                #"*Microsoft.WindowsStore*"
+            )
+            foreach ($Bloat in $Bloatware) {
+                Get-AppxPackage -Name $Bloat| Remove-AppxPackage
+                Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $Bloat | Remove-AppxProvisionedPackage -Online
+                Write-Host "Trying to remove $Bloat."
+                Write-Host "Bloatware removed!"
+            }
+	## ## ## ## ## ## ## ## ## ##
+	
+
+#	Replaced by previous section of code	
+#	# Uninstall default Microsoft applications
+#    Write-Host "Uninstalling default Microsoft applications..."
+#    Get-AppxPackage "Microsoft.3DBuilder" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.BingFinance" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.BingNews" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.BingSports" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.BingWeather" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.Getstarted" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.MicrosoftOfficeHub" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.MicrosoftSolitaireCollection" | Remove-AppxPackage
+#    # Get-AppxPackage "Microsoft.Office.OneNote" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.People" | Remove-AppxPackage
+#    # Get-AppxPackage "Microsoft.SkypeApp" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.Windows.Photos" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.WindowsAlarms" | Remove-AppxPackage
+#    # Get-AppxPackage "Microsoft.WindowsCamera" | Remove-AppxPackage
+#    # Get-AppxPackage "microsoft.windowscommunicationsapps" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.WindowsMaps" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.WindowsPhone" | Remove-AppxPackage
+#    # Get-AppxPackage "Microsoft.WindowsSoundRecorder" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.XboxApp" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.ZuneMusic" | Remove-AppxPackage
+#    Get-AppxPackage "Microsoft.ZuneVideo" | Remove-AppxPackage
+#    # Get-AppxPackage "Microsoft.AppConnector" | Remove-AppxPackage
+#    # Get-AppxPackage "Microsoft.ConnectivityStore" | Remove-AppxPackage
+#    # Get-AppxPackage "Microsoft.Office.Sway" | Remove-AppxPackage
+#    # Get-AppxPackage "Microsoft.Messaging" | Remove-AppxPackage
+#    # Get-AppxPackage "Microsoft.CommsPhone" | Remove-AppxPackage
+#    # Get-AppxPackage "9E2F88E3.Twitter" | Remove-AppxPackage
+#    Get-AppxPackage "king.com.CandyCrushSodaSaga" | Remove-AppxPackage
+#    Get-AppxPackage "king.com.CandyCrushSaga" | Remove-AppxPackage
+#    Get-AppxPackage "king.com.CandyCrushFriends" | Remove-AppxPackage
 
     # Install default Microsoft applications
     # Add-AppxPackage -DisableDevelopmentMode -Register "$($(Get-AppXPackage -AllUsers "Microsoft.3DBuilder").InstallLocation)\AppXManifest.xml"
@@ -594,6 +723,12 @@ function ReclaimWindows10 {
     # }
     # Remove-Item -Path "HKCR:\Applications\photoviewer.dll\shell\open" -Recurse
 
+	#From Remove Windows10 Bloatware script
+	#Installs .NET 3.5
+	Write-Host "Initializing the installation of .NET 3.5..."
+	DISM /Online /Enable-Feature /FeatureName:NetFx3 /All
+	Write-Host ".NET 3.5 has been successfully installed!"
+
     }
 
 # Uploads a default layout to all NEW users that log into the system. Effects task bar and start menu
@@ -610,9 +745,9 @@ function ApplyDefaultApps {
 }
 
 # Custom power profile used for our customers. Ensures systems do not go to sleep.
-function IntechPower {
+function Power {
     POWERCFG -DUPLICATESCHEME 381b4222-f694-41f0-9685-ff5bb260df2e 381b4222-f694-41f0-9685-ff5bb260aaaa
-    POWERCFG -CHANGENAME 381b4222-f694-41f0-9685-ff5bb260aaaa "Intech Power Management"
+    POWERCFG -CHANGENAME 381b4222-f694-41f0-9685-ff5bb260aaaa "Pirum Power Management"
     POWERCFG -SETACTIVE 381b4222-f694-41f0-9685-ff5bb260aaaa
     POWERCFG -Change -monitor-timeout-ac 15
     POWERCFG -CHANGE -monitor-timeout-dc 5
@@ -622,6 +757,14 @@ function IntechPower {
     POWERCFG -CHANGE -standby-timeout-dc 30
     POWERCFG -CHANGE -hibernate-timeout-ac 0
     POWERCFG -CHANGE -hibernate-timeout-dc 0
+}
+
+function JoinDomain {
+    add-computer -domainname "spcs.local" -OUPath "OU=SPCS Computer Lab,DC=spcs,DC=local" -Credential SPCS\Administrator 
+}
+
+function SetTime {
+    Set-TimeZone -Id "Eastern Standard Time" 
 }
 
 function RestartPC{
@@ -640,6 +783,8 @@ InstallApps
 ReclaimWindows10
 LayoutDesign
 ApplyDefaultApps
-IntechPower
+Power
 SetPCName
+SetTime
+#JoinDomain
 RestartPC
