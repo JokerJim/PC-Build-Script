@@ -214,7 +214,7 @@ function ReclaimWindows10 {
 	Get-ScheduledTask -TaskName UsbCeip | Disable-ScheduledTask
 	Get-ScheduledTask -TaskName DmClient | Disable-ScheduledTask
 	Get-ScheduledTask -TaskName DmClientOnScenarioDownload | Disable-ScheduledTask
-	}
+
 
     ##########
     # Service Tweaks
