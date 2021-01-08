@@ -15,6 +15,7 @@ function SetPCName {
 
 function InstallChoco {
     # Ask for elevated permissions if required
+    Write-Output "InstallChoco function"
     If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
         Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
         Exit
@@ -24,6 +25,7 @@ function InstallChoco {
     }
 
 function InstallApps {
+    Write-Output "InstallApps function"
     # Install the first set of applications. these are quick so ive added them separately
     choco install googlechrome zoom adobereader 7zip microsoft-edge firefox notepadplusplus unchecky -y
     # Install Office365 applications. This takes a while so is done separately. You can change the options here by following the instructions here: https://chocolatey.org/packages/microsoft-office-deployment
@@ -32,6 +34,7 @@ function InstallApps {
 }
 
 function ReclaimWindows10 {
+    Write-Output "ReclaimWindows10 function"
     # Ask for elevated permissions if required
     If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
         Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
@@ -733,6 +736,7 @@ function ReclaimWindows10 {
 
 # Uploads a default layout to all NEW users that log into the system. Effects task bar and start menu
 function LayoutDesign {
+    Write-Output "LayoutDesign function"
     If (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")) {
         Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
         Exit
@@ -746,6 +750,7 @@ function ApplyDefaultApps {
 
 # Custom power profile used for our customers. Ensures systems do not go to sleep.
 function Power {
+    Write-Output "Power function"
     POWERCFG -DUPLICATESCHEME 381b4222-f694-41f0-9685-ff5bb260df2e 381b4222-f694-41f0-9685-ff5bb260aaaa
     POWERCFG -CHANGENAME 381b4222-f694-41f0-9685-ff5bb260aaaa "Pirum Power Management"
     POWERCFG -SETACTIVE 381b4222-f694-41f0-9685-ff5bb260aaaa
@@ -760,14 +765,17 @@ function Power {
 }
 
 function JoinDomain {
+    Write-Output "JoinDomain function"
     add-computer -domainname "spcs.local" -OUPath "OU=SPCS Computer Lab,DC=spcs,DC=local" -Credential SPCS\Administrator 
 }
 
 function SetTime {
+    Write-Output "SetTime function"
     Set-TimeZone -Id "Eastern Standard Time" 
 }
 
 function RestartPC{
+    Write-Output "RestartPC function"
     ##########
     # Restart
     ##########
@@ -779,13 +787,21 @@ function RestartPC{
 }
 
 InstallChoco
+Read-Host -Prompt "InstallChoco Done. Press any key to continue."
 InstallApps
+Read-Host -Prompt "InstallApps Done. Press any key to continue."
 ReclaimWindows10
+Read-Host -Prompt "ReclaimWindows10 Done. Press any key to continue."
 LayoutDesign
+Read-Host -Prompt "LayoutDesign Done. Press any key to continue."
 ApplyDefaultApps
+Read-Host -Prompt "ApplyDefaultApps Done. Press any key to continue."
 Power
+Read-Host -Prompt "Power Done. Press any key to continue."
 SetPCName
+Read-Host -Prompt "SetPCName Done. Press any key to continue."
 SetTime
+Read-Host -Prompt "SetTime Done. Press any key to continue."
 #JoinDomain
 Read-Host -Prompt "Press any key to reboot the computer"
 RestartPC
