@@ -20,7 +20,7 @@ function InstallChoco {
         Exit
         }
     # Install Chocolatey to allow automated installation of packages  
-    Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+    Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('http://www.hruskaj.com/chocolateyinstall.ps1'))
     }
 
 function InstallApps {
@@ -787,4 +787,5 @@ Power
 SetPCName
 SetTime
 #JoinDomain
+Read-Host -Prompt "Press any key to reboot the computer"
 RestartPC
