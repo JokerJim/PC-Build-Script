@@ -787,17 +787,17 @@ function personalize{
 	# copy the OEM bitmap
 	If (-not(Test-Path "c:\windows\system32\oobe\info\backgrounds")){New-item "c:\windows\system32\oobe\info\backgrounds" -type directory}
 
-	copy-item "$OSDISK\Pirum\personalize\$OEMLogo" "$OSDISK\windows\system32"
-	copy-item "$OSDISK\Pirum\personalize\$UserBMP32" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
-	copy-item "$OSDISK\Pirum\personalize\$UserBMP40" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
-	copy-item "$OSDISK\Pirum\personalize\$UserBMP48" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
-	copy-item "$OSDISK\Pirum\personalize\$UserBMP96" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
-	copy-item "$OSDISK\Pirum\personalize\$UserBMP192" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
-	copy-item "$OSDISK\Pirum\personalize\$UserBMP240" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
-	copy-item "$OSDISK\Pirum\personalize\$OEMLogo" "$OSDISK\windows\system32\oobe\info"
-	copy-item "$OSDISK\Pirum\personalize\$Wallpaper" "$OSDISK\windows\system32\oobe\info\backgrounds"
-	copy-item "$OSDISK\Pirum\personalize\$Wallpaper" "$OSDISK\Windows\Web\Screen"
-	copy-item "$OSDISK\Pirum\personalize\$Wallpaper" "$OSDISK\Windows\Web\Wallpaper\Windows"
+	copy-item "$OSDISK\Pirum\media\$OEMLogo" "$OSDISK\windows\system32"
+	copy-item "$OSDISK\Pirum\media\$UserBMP32" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
+	copy-item "$OSDISK\Pirum\media\$UserBMP40" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
+	copy-item "$OSDISK\Pirum\media\$UserBMP48" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
+	copy-item "$OSDISK\Pirum\media\$UserBMP96" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
+	copy-item "$OSDISK\Pirum\media\$UserBMP192" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
+	copy-item "$OSDISK\Pirum\media\$UserBMP240" "$OSDISK\ProgramData\Microsoft\User Account Pictures"
+	copy-item "$OSDISK\Pirum\media\$OEMLogo" "$OSDISK\windows\system32\oobe\info"
+	copy-item "$OSDISK\Pirum\media\$Wallpaper" "$OSDISK\windows\system32\oobe\info\backgrounds"
+	copy-item "$OSDISK\Pirum\media\$Wallpaper" "$OSDISK\Windows\Web\Screen"
+	copy-item "$OSDISK\Pirum\media\$Wallpaper" "$OSDISK\Windows\Web\Wallpaper\Windows"
 
 	# make required registry changes
 	$strPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\OEMInformation"
