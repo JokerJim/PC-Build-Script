@@ -783,6 +783,7 @@ function personalize{
 	$UserBMP96 = "user96.bmp"
 	$UserBMP192 = "user192.bmp"
 	$UserBMP240 = "user240.bmp"
+	$LockScreen = "lockscreen.jpg"
 
 	# copy the OEM bitmap
 	If (-not(Test-Path "c:\windows\system32\oobe\info\backgrounds")){New-item "c:\windows\system32\oobe\info\backgrounds" -type directory}
@@ -798,6 +799,7 @@ function personalize{
 	copy-item "$OSDISK\Pirum\media\$Wallpaper" "$OSDISK\windows\system32\oobe\info\backgrounds"
 	copy-item "$OSDISK\Pirum\media\$Wallpaper" "$OSDISK\Windows\Web\Screen"
 	copy-item "$OSDISK\Pirum\media\$Wallpaper" "$OSDISK\Windows\Web\Wallpaper\Windows"
+	copy-item "$OSDISK\Pirum\media\$LockScreen" "$OSDISK\Windows\System32"
 
 	# make required registry changes
 	$strPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\OEMInformation"
@@ -808,21 +810,36 @@ function personalize{
 	$strPath4 = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
 	$subPath5 = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AccountPicture\Users"
 	$strPath5 = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AccountPicture\Users\$SID"
+	$subPath6 = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP"
 
+	#set OEM information
 	Set-ItemProperty -Path $strPath -Name Logo -Value "$OSDISK\Windows\System32\OEMlogo.bmp"
 	Set-ItemProperty -Path $strPath -Name Manufacturer -Value "Pirum Consulting LLC"
 	Set-ItemProperty -Path $strPath -Name SupportPhone -Value "330-597-0450"
 	Set-ItemProperty -Path $strPath -Name SupportHours -Value "Mon-Fri 9am-5pm"
 	Set-ItemProperty -Path $strPath -Name SupportURL -Value "http://pirumllc.itclientportal.com"
 	Set-ItemProperty -Path $strPath2 -Name OEMBackground -value 1
-
-	New-Item -Path $subPath3 -Name "Personalization" -Force
+	
+	#set lockscreen
+    if(!(Test-Path $subPath3)) {
+		New-Item -Path $subPath3 -Name "Personalization" -Force
+	}
 	Set-ItemProperty -Path $strPath3 -Name LockScreenImage -value "$OSDISK\Windows\Web\Screen\$Wallpaper"
 
+    if(!(Test-Path $subPath6)) {
+        New-Item -Path $subPath6 -Force | Out-Null
+    }
+	New-ItemProperty -Path $subPath6 -Name LockScreenImageStatus -Value 1 -PropertyType DWORD -Force | Out-Null
+	New-ItemProperty -Path $subPath6 -Name LockScreenImagePath -Value "$OSDISK\Windows\System32\$LockScreen" -PropertyType STRING -Force | Out-Null
+	New-ItemProperty -Path $subPath6 -Name LockScreenImageUrl -Value "$OSDISK\Windows\System32\$LockScreen" -PropertyType STRING -Force | Out-Null
+	
+
+	#set wallpaper
 	New-Item -Path $subPath4 -Name "System" -Force
 	Set-ItemProperty -Path $strPath4 -Name Wallpaper -value "$OSDISK\Windows\Web\Wallpaper\Windows\$Wallpaper"
 	Set-ItemProperty -Path $strPath4 -Name WallpaperStyle -value "2"
 	
+	#set user icon for lockscreen
 	New-Item -Path $subPath5 -Name "$SID" -Force
 	Set-ItemProperty -Path $strPath5 -Name Image32 -value "$OSDISK\ProgramData\Microsoft\User Account Pictures\$UserBMP32"
 	Set-ItemProperty -Path $strPath5 -Name Image40 -value "$OSDISK\ProgramData\Microsoft\User Account Pictures\$UserBMP40"
