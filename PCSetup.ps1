@@ -860,12 +860,19 @@ function RestartPC{
     Restart-Computer
 }
 
+function Branding{
+#Invoke-WebRequest -Uri "https://pirumllc.com/Pirum+consulting+logo+colors.png" -OutFile "c:\windows\system32\intechlogo.bmp"
+copy-item "$OSDISK\Pirum\media\$OEMLogo" "$OSDISK\windows\system32"
+New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation" -Name "Manufacturer" -Value "Pirum Consulting LLC"  -PropertyType "String" -Force
+}
+
 InstallChoco
 InstallApps
 ReclaimWindows10
 LayoutDesign
 ApplyDefaultApps
 Power
+Branding
 SetPCName
 SetTime
 personalize
