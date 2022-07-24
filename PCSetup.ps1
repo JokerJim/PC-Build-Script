@@ -4,13 +4,13 @@ function SetPCName {
     # In our MSP we designate all systems in the format devicetype-companyname-assetid for example DT-MSP-000001 keep in mind that this is the maximum length Windows allows for system names
     # This function creates VisualBasic pop-up prompts which ask for this information to be input. You can hange these as needed to suite your MSP
     Add-Type -AssemblyName Microsoft.VisualBasic
-    $DeviceType = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Device Type (L or D)', 'Device Type')
-    $CompanyName = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Company Initials (Max 4 letters)', 'Company Initials')
+    $DeviceType = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Device Type (L)aptop, (A)ll-in-one, Ta(B)let, Ser(V)er, (D)esktop or (Z)other', 'Device Type')
+    $CompanyName = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Company Initials (Max 3 letters)', 'Company Initials')
     $LocationName = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Location Initials (Max 3 letters)', 'Location Initials')
     $AssetID = [Microsoft.VisualBasic.Interaction]::InputBox('Enter a Asset ID (Max 5 digits)', 'Asset ID')
     Write-Output "The asset ID is $AssetID"
     Write-Output "$CompanyName-$LcoationName-$DeviceType$AssetID"
-    Rename-Computer -NewName "$CompanyName-$LocationName-$DeviceType$AssetID"
+    Rename-Computer -NewName "$CompanyName-$LocationName-$DeviceType-$AssetID"
 }
 
 function InstallChoco {
@@ -776,7 +776,7 @@ function personalize{
 
 	$SID=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 	$Wallpaper = "backgroundDefault.jpg"
-	$OEMLogo = "OEMLogo.BMP"
+	$OEMLogo = "OEMLogo.bmp"
 	$UserBMP32 = "user32.bmp"
 	$UserBMP40 = "user40.bmp"
 	$UserBMP48 = "user48.bmp"
