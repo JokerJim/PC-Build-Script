@@ -9,7 +9,7 @@ function SetPCName {
     $LocationName = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Location Initials (Max 3 letters)', 'Location Initials')
     $AssetID = [Microsoft.VisualBasic.Interaction]::InputBox('Enter a Asset ID (Max 5 digits)', 'Asset ID')
     Write-Output "The asset ID is $AssetID"
-    Write-Output "$CompanyName-$LcoationName-$DeviceType$AssetID"
+    Write-Output "$CompanyName-$LocationName-$DeviceType$AssetID"
     Rename-Computer -NewName "$CompanyName-$LocationName-$DeviceType-$AssetID"
 }
 
@@ -20,7 +20,8 @@ function InstallChoco {
         Exit
         }
     # Install Chocolatey to allow automated installation of packages  
-    Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('http://www.hruskaj.com/chocolateyinstall.ps1'))
+    # Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('http://www.hruskaj.com/chocolateyinstall.ps1'))
+    Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
     }
 
 function InstallApps {
