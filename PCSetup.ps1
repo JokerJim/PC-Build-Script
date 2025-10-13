@@ -873,15 +873,15 @@ copy-item "$OSDISK\Pirum\media\$OEMLogo" "$OSDISK\windows\system32"
 New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation" -Name "Manufacturer" -Value "Pirum Consulting LLC"  -PropertyType "String" -Force
 }
 
-InstallChoco
-InstallApps
-ReclaimWindows10
-LayoutDesign
-ApplyDefaultApps
-Power
+#InstallChoco
+#InstallApps
+#ReclaimWindows10
+#LayoutDesign
+#ApplyDefaultApps
+#Power
 Branding
-SetPCName
-SetTime
+#SetPCName
+#SetTime
 personalize
 #JoinDomain
-RestartPC
+#RestartPC
