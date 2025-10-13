@@ -790,7 +790,7 @@ function personalize{
 	Set-ItemProperty -Path $strPath -Name Manufacturer -Value "Pirum Consulting LLC"
 	Set-ItemProperty -Path $strPath -Name SupportPhone -Value "330-597-0450"
 	Set-ItemProperty -Path $strPath -Name SupportHours -Value "Mon-Fri 9am-5pm"
-	Set-ItemProperty -Path $strPath -Name SupportURL -Value "http://pirumllc.itclientportal.com"
+	Set-ItemProperty -Path $strPath -Name SupportURL -Value "http://go.pirumllc.com/portal"
 	
 	
 	# background
