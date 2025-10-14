@@ -9,7 +9,7 @@ function SetPCName {
     $LocationName = [Microsoft.VisualBasic.Interaction]::InputBox('Enter Location Initials (Max 3 letters)', 'Location Initials')
     $AssetID = [Microsoft.VisualBasic.Interaction]::InputBox('Enter a Asset ID (Max 5 digits)', 'Asset ID')
     Write-Output "The asset ID is $AssetID"
-    Write-Output "$CompanyName-$LocationName-$DeviceType$AssetID"
+    Write-Output "$CompanyName-$LocationName-$DeviceType-$AssetID"
     Rename-Computer -NewName "$CompanyName-$LocationName-$DeviceType-$AssetID"
 }
 
@@ -26,10 +26,10 @@ function InstallChoco {
 
 function InstallApps {
     # Install the first set of applications. these are quick so ive added them separately
-    choco install googlechrome zoom adobereader 7zip microsoft-edge firefox notepadplusplus unchecky -y
+    choco install googlechrome zoom adobereader 7zip firefox notepadplusplus -y
     # Install Office365 applications. This takes a while so is done separately. You can change the options here by following the instructions here: https://chocolatey.org/packages/microsoft-office-deployment
     # choco install microsoft-office-deployment --params="'/Channel:Monthly /Language:en-us /64bit /Product:O365BusinessRetail /Exclude:Lync,Groove'" -y
-    choco install microsoft-office-deployment --params="'/Channel:Monthly /Language:en-us /Product:O365BusinessRetail /Exclude:Lync,Groove'" -y
+    choco install microsoft-office-deployment --params="'/Channel:Monthly /Language:en-us /RemoveMSI /Product:O365BusinessRetail /Exclude:Lync,Groove'" -y
 }
 
 function ReclaimWindows10 {
@@ -869,19 +869,19 @@ function RestartPC{
 
 function Branding{
 #Invoke-WebRequest -Uri "https://pirumllc.com/Pirum+consulting+logo+colors.png" -OutFile "c:\windows\system32\intechlogo.bmp"
-copy-item "$OSDISK\Pirum\media\$OEMLogo" "$OSDISK\windows\system32"
+copy-item "$OSDISK\Pirum\defmedia\$OEMLogo" "$OSDISK\windows\system32"
 New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation" -Name "Manufacturer" -Value "Pirum Consulting LLC"  -PropertyType "String" -Force
 }
 
-#InstallChoco
-#InstallApps
+InstallChoco
+InstallApps
 #ReclaimWindows10
-#LayoutDesign
-#ApplyDefaultApps
-#Power
+LayoutDesign
+ApplyDefaultApps
+Power
 Branding
-#SetPCName
-#SetTime
+SetPCName
+SetTime
 personalize
 #JoinDomain
-#RestartPC
+RestartPC
