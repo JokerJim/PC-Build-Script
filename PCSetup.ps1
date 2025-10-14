@@ -753,8 +753,8 @@ function Power {
     POWERCFG -DUPLICATESCHEME 381b4222-f694-41f0-9685-ff5bb260df2e 381b4222-f694-41f0-9685-ff5bb260aaaa
     POWERCFG -CHANGENAME 381b4222-f694-41f0-9685-ff5bb260aaaa "Pirum Power Management"
     POWERCFG -SETACTIVE 381b4222-f694-41f0-9685-ff5bb260aaaa
-    POWERCFG -Change -monitor-timeout-ac 15
-    POWERCFG -CHANGE -monitor-timeout-dc 5
+    POWERCFG -Change -monitor-timeout-ac 30
+    POWERCFG -CHANGE -monitor-timeout-dc 10
     POWERCFG -CHANGE -disk-timeout-ac 30
     POWERCFG -CHANGE -disk-timeout-dc 5
     POWERCFG -CHANGE -standby-timeout-ac 0
