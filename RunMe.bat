@@ -1,6 +1,9 @@
 REM Create a directory on the C drive to store the scripts from the repository
 mkdir c:\Pirum
+mkdir c:\Pirum\media
 copy .\media\* c:\Pirum\media
+mkdir c:\Pirum\defmedia
+copy .\defmedia\* c:\Pirum\defmedia
 REM Enable execution policy to allow running of scripts
 Powershell.exe -Command "& {Start-Process Powershell.exe -ArgumentList 'set-executionpolicy remotesigned' -Verb RunAs}"
 REM Download the most up to date version of the script from the repository. download.ps1 must be in the same directory as RunMe.bat
