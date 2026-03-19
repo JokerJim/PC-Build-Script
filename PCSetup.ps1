@@ -285,8 +285,12 @@ function Invoke-InstallManagementSoftware {
 function Invoke-Personalize {
     param(
         [bool]$DoOEM,
-        [bool]$DoWallpaper,
-        [bool]$DoLockscreen,
+        [bool]$OEMSetManufacturer, [string]$OEMManufacturer,
+        [bool]$OEMSetPhone,        [string]$OEMPhone,
+        [bool]$OEMSetHours,        [string]$OEMHours,
+        [bool]$OEMSetURL,          [string]$OEMURL,
+        [bool]$DoWallpaper,   [string]$WallpaperSrc,
+        [bool]$DoLockscreen,  [string]$LockscreenSrc,
         [bool]$DoUserPictures,
         [bool]$DoReset
     )
@@ -305,79 +309,71 @@ function Invoke-Personalize {
         'Wallpaper','WallpaperStyle' | ForEach-Object {
             Remove-ItemProperty -Path $bgPath -Name $_ -ErrorAction SilentlyContinue
         }
-        $lsPerPath = "HKLM:\Software\Policies\Microsoft\Windows\Personalization"
-        Remove-ItemProperty -Path $lsPerPath -Name "LockScreenImage" -ErrorAction SilentlyContinue
-        $cspPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP"
-        Remove-Item -Path $cspPath -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\Personalization" -Name "LockScreenImage" -ErrorAction SilentlyContinue
+        Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Recurse -Force -ErrorAction SilentlyContinue
         Write-Log "    Personalization reset complete."
         return
     }
 
-    # OEM Information
     if ($DoOEM) {
         Write-Log ">>> Applying OEM branding..."
-        $oemPath   = "HKLM:\Software\Microsoft\Windows\CurrentVersion\OEMInformation"
-        $OEMLogo   = "OEMLogo.bmp"
-        $logoSrc   = "$OSDISK\Pirum\defmedia\$OEMLogo"
+        $oemPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\OEMInformation"
+        Ensure-RegPath $oemPath
+        $OEMLogo = "OEMLogo.bmp"
+        $logoSrc = "$OSDISK\Pirum\defmedia\$OEMLogo"
         if (Test-Path $logoSrc) {
             Copy-Item $logoSrc "$OSDISK\windows\system32" -Force
             Copy-Item $logoSrc "$OSDISK\windows\system32\oobe\info" -Force
             Set-ItemProperty -Path $oemPath -Name Logo -Value "$OSDISK\Windows\System32\$OEMLogo"
         }
-        Set-ItemProperty -Path $oemPath -Name Manufacturer  -Value "Pirum Consulting LLC"
-        Set-ItemProperty -Path $oemPath -Name SupportPhone  -Value "330-597-0550"
-        Set-ItemProperty -Path $oemPath -Name SupportHours  -Value "Mon-Fri 9am-5pm"
-        Set-ItemProperty -Path $oemPath -Name SupportURL    -Value "http://go.pirumllc.com/portal"
-        Write-Log "    OEM info set (Pirum Consulting LLC, 330-597-0550)."
+        if ($OEMSetManufacturer) { Set-ItemProperty -Path $oemPath -Name Manufacturer -Value $OEMManufacturer }
+        if ($OEMSetPhone)        { Set-ItemProperty -Path $oemPath -Name SupportPhone  -Value $OEMPhone }
+        if ($OEMSetHours)        { Set-ItemProperty -Path $oemPath -Name SupportHours  -Value $OEMHours }
+        if ($OEMSetURL)          { Set-ItemProperty -Path $oemPath -Name SupportURL    -Value $OEMURL }
+        Write-Log "    OEM info applied."
     }
 
-    # Desktop Wallpaper
     if ($DoWallpaper) {
         Write-Log ">>> Applying desktop wallpaper..."
-        $Wallpaper  = "background.jpg"
-        $wallSrc    = "$OSDISK\Pirum\media\$Wallpaper"
-        if (Test-Path $wallSrc) {
-            $bgDir = "c:\windows\system32\oobe\info\backgrounds"
+        if ([string]::IsNullOrWhiteSpace($WallpaperSrc) -or -not (Test-Path $WallpaperSrc)) {
+            Write-Log "    Wallpaper source not found: $WallpaperSrc" ([System.Drawing.Color]::Yellow)
+        } else {
+            $wallFile = Split-Path $WallpaperSrc -Leaf
+            $bgDir = "C:\windows\system32\oobe\info\backgrounds"
             if (-not (Test-Path $bgDir)) { New-Item $bgDir -ItemType Directory -Force | Out-Null }
-            Copy-Item $wallSrc $bgDir -Force
-            Copy-Item $wallSrc "$OSDISK\Windows\Web\Screen" -Force -ErrorAction SilentlyContinue
-            Copy-Item $wallSrc "$OSDISK\Windows\Web\Wallpaper\Windows" -Force -ErrorAction SilentlyContinue
+            Copy-Item $WallpaperSrc $bgDir -Force
+            Copy-Item $WallpaperSrc "$OSDISK\Windows\Web\Screen" -Force -ErrorAction SilentlyContinue
+            Copy-Item $WallpaperSrc "$OSDISK\Windows\Web\Wallpaper\Windows" -Force -ErrorAction SilentlyContinue
             $bgPath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
             Ensure-RegPath $bgPath
-            Set-ItemProperty -Path $bgPath -Name Wallpaper      -Value "$OSDISK\Windows\Web\Wallpaper\Windows\$Wallpaper"
+            Set-ItemProperty -Path $bgPath -Name Wallpaper      -Value "$OSDISK\Windows\Web\Wallpaper\Windows\$wallFile"
             Set-ItemProperty -Path $bgPath -Name WallpaperStyle -Value "2"
-            Write-Log "    Wallpaper applied."
-        } else {
-            Write-Log "    Wallpaper source not found: $wallSrc" ([System.Drawing.Color]::Yellow)
+            Write-Log "    Wallpaper applied: $wallFile"
         }
     }
 
-    # Lock Screen
     if ($DoLockscreen) {
         Write-Log ">>> Applying lock screen..."
-        $LockScreen = "lockscreen.jpg"
-        $lsSrc      = "$OSDISK\Pirum\media\$LockScreen"
-        if (Test-Path $lsSrc) {
-            Copy-Item $lsSrc "$OSDISK\Windows\System32" -Force
+        if ([string]::IsNullOrWhiteSpace($LockscreenSrc) -or -not (Test-Path $LockscreenSrc)) {
+            Write-Log "    Lock screen source not found: $LockscreenSrc" ([System.Drawing.Color]::Yellow)
+        } else {
+            $lsFile = Split-Path $LockscreenSrc -Leaf
+            Copy-Item $LockscreenSrc "$OSDISK\Windows\System32" -Force
             $sysPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System"
             Ensure-RegPath $sysPath
             Set-ItemProperty -Path $sysPath -Name UseOEMBackground -Value 1
             $perPath = "HKLM:\Software\Policies\Microsoft\Windows\Personalization"
             Ensure-RegPath $perPath
-            Set-ItemProperty -Path $perPath -Name LockScreenImage -Value "$OSDISK\Windows\System32\$LockScreen"
-            $cspParent = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion"
-            $cspPath   = "$cspParent\PersonalizationCSP"
+            Set-ItemProperty -Path $perPath -Name LockScreenImage -Value "$OSDISK\Windows\System32\$lsFile"
+            $cspPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP"
             Ensure-RegPath $cspPath
-            New-ItemProperty -Path $cspPath -Name LockScreenImageStatus -Value 1          -PropertyType DWORD  -Force | Out-Null
-            New-ItemProperty -Path $cspPath -Name LockScreenImagePath   -Value "$OSDISK\Windows\System32\$LockScreen" -PropertyType STRING -Force | Out-Null
-            New-ItemProperty -Path $cspPath -Name LockScreenImageUrl    -Value "$OSDISK\Windows\System32\$LockScreen" -PropertyType STRING -Force | Out-Null
-            Write-Log "    Lock screen applied."
-        } else {
-            Write-Log "    Lock screen source not found: $lsSrc" ([System.Drawing.Color]::Yellow)
+            New-ItemProperty -Path $cspPath -Name LockScreenImageStatus -Value 1 -PropertyType DWORD  -Force | Out-Null
+            New-ItemProperty -Path $cspPath -Name LockScreenImagePath   -Value "$OSDISK\Windows\System32\$lsFile" -PropertyType STRING -Force | Out-Null
+            New-ItemProperty -Path $cspPath -Name LockScreenImageUrl    -Value "$OSDISK\Windows\System32\$lsFile" -PropertyType STRING -Force | Out-Null
+            Write-Log "    Lock screen applied: $lsFile"
         }
     }
 
-    # User Account Pictures
     if ($DoUserPictures) {
         Write-Log ">>> Applying user account pictures..."
         $userPicDest = "$OSDISK\ProgramData\Microsoft\User Account Pictures"
@@ -1322,25 +1318,113 @@ function Show-MainForm {
     $tpPersonalize.Controls.Add($pPers)
     $y4 = 8
 
-    $y4 = Add-SectionLabel $pPers "OEM Branding" $y4
-    $cbOEM = Add-CheckRow $pPers "Apply OEM Information  (Manufacturer, support phone 330-597-0550, hours, URL)" $true "Sets the branding info visible in Settings > System > About. Also copies OEMLogo.bmp if found in C:\Pirum\defmedia\." $y4; $y4 += 26
+    # ---- OEM Branding ----
+    $y4 = Add-SectionLabel $pPers "OEM Information  (visible in Settings > System > About)" $y4
 
-    $y4 = Add-SectionLabel $pPers "Backgrounds" $y4
-    $cbWallpaper  = Add-CheckRow $pPers "Apply Desktop Wallpaper       source: C:\Pirum\media\background.jpg" $true "Copies wallpaper to Windows web/screen directories and sets it for the current user profile." $y4; $y4 += 22
-    $cbLockscreen = Add-CheckRow $pPers "Apply Lock Screen Image         source: C:\Pirum\media\lockscreen.jpg"      $true "Copies lockscreen.jpg to System32, sets it via policy and PersonalizationCSP registry keys." $y4; $y4 += 26
+    $cbOEM = Add-CheckRow $pPers "Apply OEM Information" $true "Writes branding fields to the OEM registry key. Uncheck individual items below to skip them." $y4; $y4 += 24
 
+    # Helper: OEM field row - checkbox + label + textbox
+    function Add-OEMField {
+        param([System.Windows.Forms.Panel]$Parent, [string]$FieldLabel, [string]$Default, [string]$Tip, [int]$Y)
+        $cb = New-Object System.Windows.Forms.CheckBox
+        $cb.Checked  = $true
+        $cb.Text     = $FieldLabel
+        $cb.Location = New-Object System.Drawing.Point(32, $Y)
+        $cb.Size     = New-Object System.Drawing.Size(160, 19)
+        $cb.ForeColor = $clrGray
+        $Parent.Controls.Add($cb)
+        $txt = New-Object System.Windows.Forms.TextBox
+        $txt.Text     = $Default
+        $txt.Location = New-Object System.Drawing.Point(200, ($Y - 1))
+        $txt.Size     = New-Object System.Drawing.Size(500, 22)
+        if ($Tip) { $ttip.SetToolTip($txt, $Tip) }
+        $Parent.Controls.Add($txt)
+        return [PSCustomObject]@{ Checkbox = $cb; TextBox = $txt }
+    }
+
+    $oemMfr   = Add-OEMField $pPers "Manufacturer:"   "Pirum Consulting LLC"         "Company name shown in System Properties." $y4; $y4 += 26
+    $oemPhone = Add-OEMField $pPers "Support Phone:"  "330-597-0550"                 "Support phone number shown in System Properties." $y4; $y4 += 26
+    $oemHours = Add-OEMField $pPers "Support Hours:"  "Mon-Fri 9am-5pm"              "Support hours shown in System Properties." $y4; $y4 += 26
+    $oemURL   = Add-OEMField $pPers "Support URL:"    "http://go.pirumllc.com/portal" "Support URL shown in System Properties." $y4; $y4 += 30
+
+    # ---- Wallpaper ----
+    $y4 = Add-SectionLabel $pPers "Desktop Wallpaper" $y4
+    $cbWallpaper = Add-CheckRow $pPers "Apply Desktop Wallpaper" $true "Copies the selected image to Windows wallpaper directories and sets it for all users." $y4; $y4 += 22
+
+    $lblWallSrc = New-Object System.Windows.Forms.Label
+    $lblWallSrc.Text      = "    Image file:"
+    $lblWallSrc.Location  = New-Object System.Drawing.Point(32, ($y4 + 3))
+    $lblWallSrc.AutoSize  = $true
+    $lblWallSrc.ForeColor = $clrGray
+    $pPers.Controls.Add($lblWallSrc)
+    $txtWallSrc = New-Object System.Windows.Forms.TextBox
+    $txtWallSrc.Text     = "C:\Pirum\media\background.jpg"
+    $txtWallSrc.Location = New-Object System.Drawing.Point(120, $y4)
+    $txtWallSrc.Size     = New-Object System.Drawing.Size(680, 22)
+    $ttip.SetToolTip($txtWallSrc, "Full path to the wallpaper image. JPG or PNG recommended. Use the Browse button to select.")
+    $pPers.Controls.Add($txtWallSrc)
+    $btnWallBrowse = New-Object System.Windows.Forms.Button
+    $btnWallBrowse.Text      = "Browse..."
+    $btnWallBrowse.Location  = New-Object System.Drawing.Point(808, ($y4 - 1))
+    $btnWallBrowse.Size      = New-Object System.Drawing.Size(80, 24)
+    $btnWallBrowse.BackColor = $clrLav
+    $btnWallBrowse.ForeColor = $clrWhite
+    $btnWallBrowse.FlatStyle = "Flat"
+    $pPers.Controls.Add($btnWallBrowse)
+    $btnWallBrowse.Add_Click({
+        $dlg = New-Object System.Windows.Forms.OpenFileDialog
+        $dlg.Title  = "Select Wallpaper Image"
+        $dlg.Filter = "Image files (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|All files (*.*)|*.*"
+        if ($dlg.ShowDialog() -eq "OK") { $txtWallSrc.Text = $dlg.FileName }
+    })
+    $y4 += 30
+
+    # ---- Lock Screen ----
+    $y4 = Add-SectionLabel $pPers "Lock Screen Image" $y4
+    $cbLockscreen = Add-CheckRow $pPers "Apply Lock Screen Image" $true "Copies the selected image and sets it as the Windows lock screen via policy and PersonalizationCSP." $y4; $y4 += 22
+
+    $lblLSSrc = New-Object System.Windows.Forms.Label
+    $lblLSSrc.Text      = "    Image file:"
+    $lblLSSrc.Location  = New-Object System.Drawing.Point(32, ($y4 + 3))
+    $lblLSSrc.AutoSize  = $true
+    $lblLSSrc.ForeColor = $clrGray
+    $pPers.Controls.Add($lblLSSrc)
+    $txtLSSrc = New-Object System.Windows.Forms.TextBox
+    $txtLSSrc.Text     = "C:\Pirum\media\lockscreen.jpg"
+    $txtLSSrc.Location = New-Object System.Drawing.Point(120, $y4)
+    $txtLSSrc.Size     = New-Object System.Drawing.Size(680, 22)
+    $ttip.SetToolTip($txtLSSrc, "Full path to the lock screen image. JPG or PNG recommended. Use the Browse button to select.")
+    $pPers.Controls.Add($txtLSSrc)
+    $btnLSBrowse = New-Object System.Windows.Forms.Button
+    $btnLSBrowse.Text      = "Browse..."
+    $btnLSBrowse.Location  = New-Object System.Drawing.Point(808, ($y4 - 1))
+    $btnLSBrowse.Size      = New-Object System.Drawing.Size(80, 24)
+    $btnLSBrowse.BackColor = $clrLav
+    $btnLSBrowse.ForeColor = $clrWhite
+    $btnLSBrowse.FlatStyle = "Flat"
+    $pPers.Controls.Add($btnLSBrowse)
+    $btnLSBrowse.Add_Click({
+        $dlg = New-Object System.Windows.Forms.OpenFileDialog
+        $dlg.Title  = "Select Lock Screen Image"
+        $dlg.Filter = "Image files (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|All files (*.*)|*.*"
+        if ($dlg.ShowDialog() -eq "OK") { $txtLSSrc.Text = $dlg.FileName }
+    })
+    $y4 += 30
+
+    # ---- User Account Pictures ----
     $y4 = Add-SectionLabel $pPers "User Account Pictures" $y4
-    $cbUserPics = Add-CheckRow $pPers "Apply User Account Pictures   source: C:\Pirum\media\user-[32|40|48|96|192|240].png/.bmp" $true "Sets account picture for the current user SID. Requires sized image files in C:\Pirum\media\." $y4; $y4 += 26
+    $cbUserPics = Add-CheckRow $pPers "Apply User Account Pictures   source: C:\Pirum\media\user-[32|40|48|96|192|240].png/.bmp" $true "Sets account picture for the current user SID. Requires sized image files in C:\Pirum\media\." $y4; $y4 += 28
 
+    # ---- Reset ----
     $y4 = Add-SectionLabel $pPers "Reset" $y4
-    $cbResetPers = Add-CheckRow $pPers "Reset Personalization Back to Windows Defaults  (removes Pirum branding)" $false "Removes OEM info, wallpaper policy, lock screen policy, and PersonalizationCSP entries. Use when repurposing a machine." $y4; $y4 += 10
+    $cbResetPers = Add-CheckRow $pPers "Reset Personalization Back to Windows Defaults  (removes all Pirum branding)" $false "Removes OEM info, wallpaper policy, lock screen policy, and PersonalizationCSP entries." $y4; $y4 += 10
 
     $lblPersNote = New-Object System.Windows.Forms.Label
-    $lblPersNote.Text = "All source files must be in place before running. Steps with missing source files are skipped gracefully with a warning in the log."
-    $lblPersNote.Font = $segSm
+    $lblPersNote.Text      = "Browse buttons open a file picker. Paths can also be typed or pasted directly. Steps with missing files are skipped with a warning in the log."
+    $lblPersNote.Font      = $segSm
     $lblPersNote.ForeColor = $clrLav
-    $lblPersNote.AutoSize = $true
-    $lblPersNote.Location = New-Object System.Drawing.Point(16, ($y4 + 8))
+    $lblPersNote.AutoSize  = $true
+    $lblPersNote.Location  = New-Object System.Drawing.Point(16, ($y4 + 8))
     $pPers.Controls.Add($lblPersNote)
 
     # ================================================================
@@ -1541,11 +1625,21 @@ function Show-MainForm {
             if ($cbPersonalize.Checked) {
                 Write-Log ">>> Applying personalization..."
                 Invoke-Personalize `
-                    -DoOEM         $cbOEM.Checked        `
-                    -DoWallpaper   $cbWallpaper.Checked  `
-                    -DoLockscreen  $cbLockscreen.Checked `
-                    -DoUserPictures $cbUserPics.Checked  `
-                    -DoReset       $cbResetPers.Checked
+                    -DoOEM               $cbOEM.Checked                `
+                    -OEMSetManufacturer  $oemMfr.Checkbox.Checked      `
+                    -OEMManufacturer     $oemMfr.TextBox.Text          `
+                    -OEMSetPhone         $oemPhone.Checkbox.Checked    `
+                    -OEMPhone            $oemPhone.TextBox.Text        `
+                    -OEMSetHours         $oemHours.Checkbox.Checked    `
+                    -OEMHours            $oemHours.TextBox.Text        `
+                    -OEMSetURL           $oemURL.Checkbox.Checked      `
+                    -OEMURL              $oemURL.TextBox.Text          `
+                    -DoWallpaper         $cbWallpaper.Checked          `
+                    -WallpaperSrc        $txtWallSrc.Text              `
+                    -DoLockscreen        $cbLockscreen.Checked         `
+                    -LockscreenSrc       $txtLSSrc.Text                `
+                    -DoUserPictures      $cbUserPics.Checked           `
+                    -DoReset             $cbResetPers.Checked
             }
 
             # 9. Management Software
