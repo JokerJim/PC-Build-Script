@@ -196,14 +196,194 @@ function Invoke-InstallCustomApp {
 }
 
 # ============================================================
+# SECTION: Defender Exclusion (Utilities USB drive)
+# ============================================================
+function Invoke-AddDefenderExclusion {
+    Write-Log ">>> Adding Windows Defender exclusion for tech tools drive..."
+    $utilitiesVol = Get-Volume | Where-Object { $_.FileSystemLabel -eq "Utilities" } | Select-Object -First 1
+    if (-not $utilitiesVol) {
+        Write-Log "    Utilities drive not found (not connected?). Skipping exclusion." ([System.Drawing.Color]::Yellow)
+        return
+    }
+    $excludePath = "$($utilitiesVol.DriveLetter):\_Collections\_TechToolStore"
+    if (-not (Test-Path $excludePath)) {
+        Write-Log "    Path not found on Utilities drive: $excludePath. Skipping." ([System.Drawing.Color]::Yellow)
+        return
+    }
+    try {
+        Add-MpPreference -ExclusionPath $excludePath -ErrorAction Stop
+        Write-Log "    Defender exclusion added: $excludePath"
+    } catch {
+        Write-Log "    ERROR adding Defender exclusion: $_" ([System.Drawing.Color]::Red)
+    }
+}
+
+# ============================================================
+# SECTION: System Restore Point
+# ============================================================
+function Invoke-CreateRestorePoint {
+    Write-Log ">>> Enabling System Restore and creating Initial Provisioning restore point..."
+    try {
+        # Enable System Restore on C: if not already enabled
+        Enable-ComputerRestore -Drive "C:\" -ErrorAction Stop
+        Write-Log "    System Restore enabled on C:."
+    } catch {
+        Write-Log "    Note: $($_.Exception.Message)" ([System.Drawing.Color]::Yellow)
+    }
+    try {
+        # Remove the 24-hour frequency limit so we can create a point immediately
+        $srPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
+        $origFreq = (Get-ItemProperty -Path $srPath -Name "SystemRestorePointCreationFrequency" -ErrorAction SilentlyContinue).SystemRestorePointCreationFrequency
+        Set-ItemProperty -Path $srPath -Name "SystemRestorePointCreationFrequency" -Value 0 -Type DWord -Force
+        Checkpoint-Computer -Description "Initial Provisioning" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+        # Restore original frequency setting (or remove if it did not exist)
+        if ($null -ne $origFreq) {
+            Set-ItemProperty -Path $srPath -Name "SystemRestorePointCreationFrequency" -Value $origFreq -Type DWord -Force
+        } else {
+            Remove-ItemProperty -Path $srPath -Name "SystemRestorePointCreationFrequency" -ErrorAction SilentlyContinue
+        }
+        Write-Log "    Restore point created: Initial Provisioning"
+    } catch {
+        Write-Log "    ERROR creating restore point: $_" ([System.Drawing.Color]::Red)
+    }
+}
+
+# ============================================================
+# SECTION: TPM and Secure Boot status log
+# ============================================================
+function Invoke-LogSecurityHardwareStatus {
+    Write-Log ">>> Documenting TPM and Secure Boot status..."
+    # TPM
+    try {
+        $tpm = Get-Tpm -ErrorAction Stop
+        Write-Log "    TPM Present:     $($tpm.TpmPresent)"
+        Write-Log "    TPM Ready:       $($tpm.TpmReady)"
+        Write-Log "    TPM Enabled:     $($tpm.TpmEnabled)"
+        Write-Log "    TPM Activated:   $($tpm.TpmActivated)"
+        Write-Log "    TPM Owned:       $($tpm.TpmOwned)"
+        $tpmVer = (Get-WmiObject -Namespace "root\cimv2\security\microsofttpm" -Class "Win32_Tpm" -ErrorAction SilentlyContinue).SpecVersion
+        if ($tpmVer) { Write-Log "    TPM Spec Version: $tpmVer" }
+    } catch {
+        Write-Log "    TPM: Could not retrieve status - $_" ([System.Drawing.Color]::Yellow)
+    }
+    # Secure Boot
+    try {
+        $sb = Confirm-SecureBootUEFI -ErrorAction Stop
+        Write-Log "    Secure Boot:     $sb"
+    } catch {
+        Write-Log "    Secure Boot: Not supported or could not be confirmed - $_" ([System.Drawing.Color]::Yellow)
+    }
+    # UEFI vs BIOS
+    try {
+        $fwType = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control" -Name "PEFirmwareType" -ErrorAction Stop).PEFirmwareType
+        Write-Log "    Firmware Type:   $(if ($fwType -eq 2) { UEFI } else { Legacy BIOS })"
+    } catch {
+        Write-Log "    Firmware Type: Could not determine" ([System.Drawing.Color]::Yellow)
+    }
+}
+
+# ============================================================
+# SECTION: BitLocker Encryption
+# ============================================================
+function Invoke-EnableBitLocker {
+    Write-Log ">>> Enabling BitLocker on C: drive..."
+
+    # Find the CustData drive by volume label
+    $custVol = Get-Volume | Where-Object { $_.FileSystemLabel -eq "CustData" } | Select-Object -First 1
+    if (-not $custVol) {
+        Write-Log "    CustData drive not found. Connect the USB drive and try again." ([System.Drawing.Color]::Red)
+        Write-Log "    BitLocker will NOT be enabled without a confirmed key backup destination." ([System.Drawing.Color]::Red)
+        return
+    }
+    $keyDrive  = "$($custVol.DriveLetter):"
+    $keyFolder = "$keyDrive\BitLocker"
+    Write-Log "    CustData drive found at $keyDrive. Keys will be saved to $keyFolder"
+
+    # Ensure key backup folder exists
+    if (-not (Test-Path $keyFolder)) {
+        New-Item -Path $keyFolder -ItemType Directory -Force | Out-Null
+    }
+
+    $driveLetter = "C:"
+
+    # Check if BitLocker is already on
+    $blStatus = Get-BitLockerVolume -MountPoint $driveLetter -ErrorAction SilentlyContinue
+    if ($blStatus -and $blStatus.ProtectionStatus -eq "On") {
+        Write-Log "    BitLocker is already enabled on $driveLetter." ([System.Drawing.Color]::Yellow)
+        Write-Log "    Backing up existing recovery key..."
+    } else {
+        try {
+            # Enable BitLocker with TPM only (no PIN - appropriate for managed business endpoints)
+            Enable-BitLocker -MountPoint $driveLetter -TpmProtector -ErrorAction Stop | Out-Null
+            Write-Log "    BitLocker enabled on $driveLetter (TPM protector)."
+        } catch {
+            Write-Log "    ERROR enabling BitLocker: $_" ([System.Drawing.Color]::Red)
+            Write-Log "    Verify TPM is present, enabled, and Secure Boot is active." ([System.Drawing.Color]::Yellow)
+            return
+        }
+    }
+
+    # Add a recovery password protector so we have a key to back up
+    try {
+        $existingRecovery = (Get-BitLockerVolume -MountPoint $driveLetter).KeyProtector |
+            Where-Object { $_.KeyProtectorType -eq "RecoveryPassword" } | Select-Object -First 1
+        if (-not $existingRecovery) {
+            Add-BitLockerKeyProtector -MountPoint $driveLetter -RecoveryPasswordProtector -ErrorAction Stop | Out-Null
+            $existingRecovery = (Get-BitLockerVolume -MountPoint $driveLetter).KeyProtector |
+                Where-Object { $_.KeyProtectorType -eq "RecoveryPassword" } | Select-Object -First 1
+        }
+
+        if ($existingRecovery) {
+            $recoveryPassword = $existingRecovery.RecoveryPassword
+            $keyID            = $existingRecovery.KeyProtectorId.Trim("{}")
+            $hostname         = $env:COMPUTERNAME
+
+            # Filename matches the Windows default format, prefixed with hostname
+            $keyFileName = "$hostname-BitLocker Recovery Key $keyID.TXT"
+            $keyFilePath = Join-Path $keyFolder $keyFileName
+
+            $keyContent = @"
+BitLocker Recovery Key
+======================
+Computer Name  : $hostname
+Drive          : $driveLetter
+Date Generated : $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+Key ID         : $keyID
+
+Recovery Key:
+$recoveryPassword
+"@
+            $keyContent | Out-File -FilePath $keyFilePath -Encoding UTF8 -Force
+            Write-Log "    Recovery key saved: $keyFilePath"
+            Write-Log "    Key ID: $keyID"
+        } else {
+            Write-Log "    WARNING: Could not retrieve recovery password protector." ([System.Drawing.Color]::Yellow)
+        }
+    } catch {
+        Write-Log "    ERROR saving recovery key: $_" ([System.Drawing.Color]::Red)
+    }
+
+    Write-Log "    NOTE: BitLocker encryption runs in the background. Full encryption" ([System.Drawing.Color]::Cyan)
+    Write-Log "    may take some time to complete after this script finishes." ([System.Drawing.Color]::Cyan)
+}
+
+# ============================================================
 # SECTION: Power Profile
 # ============================================================
 function Invoke-SetPowerProfile {
     Write-Log ">>> Applying Pirum Power Management profile..."
-    $schemeGUID = "381b4222-f694-41f0-9685-ff5bb260aaaa"
+    $schemeGUID  = "381b4222-f694-41f0-9685-ff5bb260aaaa"
+    # Processor performance GUIDs
+    $procSubGUID = "54533251-82be-4824-96c1-47b60b740d00"
+    $minCpuGUID  = "893dee8e-2bef-41e0-89c6-b55d0929964c"  # min processor state
+    $maxCpuGUID  = "bc5038f7-23e0-4960-96da-33abaf5935ec"  # max processor state
+    $boostGUID   = "be337238-0d82-4146-a960-4f3749d470c7"  # processor perf boost
+
     POWERCFG -DUPLICATESCHEME 381b4222-f694-41f0-9685-ff5bb260df2e $schemeGUID 2>$null
     POWERCFG -CHANGENAME $schemeGUID "Pirum Power Management" 2>$null
     POWERCFG -SETACTIVE $schemeGUID
+
+    # Sleep / timeout settings
     POWERCFG -Change -monitor-timeout-ac 30
     POWERCFG -Change -monitor-timeout-dc 10
     POWERCFG -Change -disk-timeout-ac 30
@@ -212,7 +392,19 @@ function Invoke-SetPowerProfile {
     POWERCFG -Change -standby-timeout-dc 30
     POWERCFG -Change -hibernate-timeout-ac 0
     POWERCFG -Change -hibernate-timeout-dc 0
-    Write-Log "    Power profile applied (AC: no sleep/hibernate; DC: sleep at 30 min)."
+
+    # High Performance CPU behavior:
+    # Min processor state 100% on AC (never throttle down), 50% on DC
+    # Max processor state 100% on both
+    # Processor performance boost: Aggressive on AC
+    POWERCFG -SETACVALUEINDEX $schemeGUID $procSubGUID $minCpuGUID 100
+    POWERCFG -SETDCVALUEINDEX $schemeGUID $procSubGUID $minCpuGUID 50
+    POWERCFG -SETACVALUEINDEX $schemeGUID $procSubGUID $maxCpuGUID 100
+    POWERCFG -SETDCVALUEINDEX $schemeGUID $procSubGUID $maxCpuGUID 100
+    POWERCFG -SETACVALUEINDEX $schemeGUID $procSubGUID $boostGUID 2   # 2 = Aggressive
+    POWERCFG -SETDCVALUEINDEX $schemeGUID $procSubGUID $boostGUID 1   # 1 = Enabled
+
+    Write-Log "    Power profile applied (AC: no sleep/hibernate, high-perf CPU; DC: sleep at 30 min)."
 }
 
 # ============================================================
@@ -857,6 +1049,90 @@ function Get-ReclaimItems {
             }
         }
 
+        [PSCustomObject]@{
+            Key      = "DisableTransparencyAnimations"
+            Label    = "Disable Transparency and Animations"
+            Category = "SystemTweaks"
+            Default  = $true
+            Advisory = "RECOMMENDED for performance. Disables window transparency, taskbar transparency, and UI animations. Visually simpler and noticeably faster on lower-spec machines."
+            Action   = {
+                # Transparency
+                Set-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "EnableTransparency" -Type DWord -Value 0 -ErrorAction SilentlyContinue
+                # Animations and visual effects - VisualFXSetting 3 = custom, 2 = best performance
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Type DWord -Value 3 -ErrorAction SilentlyContinue
+                # Selectively disable animations while keeping useful rendering
+                $apPath = "HKCU:\Control Panel\Desktop\WindowMetrics"
+                Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "UserPreferencesMask" -Type Binary -Value ([byte[]](0x90,0x12,0x03,0x80,0x10,0x00,0x00,0x00)) -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "MenuShowDelay" -Type String -Value "0" -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ListviewShadow" -Type DWord -Value 0 -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAnimations" -Type DWord -Value 0 -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\DWM" -Name "EnableAeroPeek" -Type DWord -Value 0 -ErrorAction SilentlyContinue
+            }
+        }
+        [PSCustomObject]@{
+            Key      = "EnableCoreIsolation"
+            Label    = "Enable Core Isolation / Memory Integrity (HVCI)"
+            Category = "SystemTweaks"
+            Default  = $true
+            Advisory = "RECOMMENDED for business endpoints. Enables Hypervisor-Protected Code Integrity (HVCI/Memory Integrity). Requires TPM 2.0 and Secure Boot. A restart is required before it takes effect. May block incompatible drivers - check Device Security after reboot."
+            Action   = {
+                $hvciPath = "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity"
+                Ensure-RegPath $hvciPath
+                Set-ItemProperty -Path $hvciPath -Name "Enabled" -Type DWord -Value 1
+                Set-ItemProperty -Path $hvciPath -Name "Locked"  -Type DWord -Value 0
+                # Credential Guard companion key
+                $dgPath = "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard"
+                Ensure-RegPath $dgPath
+                Set-ItemProperty -Path $dgPath -Name "EnableVirtualizationBasedSecurity" -Type DWord -Value 1
+                Set-ItemProperty -Path $dgPath -Name "RequirePlatformSecurityFeatures"   -Type DWord -Value 1
+                Write-Host "Core Isolation enabled. Restart required for Memory Integrity to take effect."
+            }
+        }
+        [PSCustomObject]@{
+            Key      = "DisableSMBv1"
+            Label    = "Disable SMBv1 Protocol"
+            Category = "SystemTweaks"
+            Default  = $true
+            Advisory = "STRONGLY RECOMMENDED. SMBv1 is the attack vector for WannaCry and similar ransomware. Should never be enabled on a managed business endpoint. Disabling it has no impact on modern networks."
+            Action   = {
+                Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "SMB1" -Type DWord -Value 0 -ErrorAction SilentlyContinue
+                Disable-WindowsOptionalFeature -Online -FeatureName "SMB1Protocol" -NoRestart -ErrorAction SilentlyContinue | Out-Null
+            }
+        }
+        [PSCustomObject]@{
+            Key      = "EnableSMBSigning"
+            Label    = "Enable SMB Signing (Require Security Signature)"
+            Category = "SystemTweaks"
+            Default  = $true
+            Advisory = "RECOMMENDED. Prevents man-in-the-middle attacks on SMB file share connections by requiring cryptographic signing on all SMB traffic. Low risk to enable; high value for security."
+            Action   = {
+                Set-SmbClientConfiguration -RequireSecuritySignature $true  -Force -ErrorAction SilentlyContinue
+                Set-SmbServerConfiguration -RequireSecuritySignature $false -Force -ErrorAction SilentlyContinue  # server side: require on client, enable but not mandate on server
+                Set-SmbServerConfiguration -EnableSecuritySignature  $true  -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        [PSCustomObject]@{
+            Key      = "SetDNSServers"
+            Label    = "Set DNS Servers (configure selection on Reclaim tab)"
+            Category = "SystemTweaks"
+            Default  = $true
+            Advisory = "RECOMMENDED. Sets explicit DNS servers on all active ethernet adapters. Choice of provider configured on the Reclaim Windows tab. Prevents ISP DNS from being the default."
+            Action   = {
+                $dnsServers = if ($script:SelectedDNS) { $script:SelectedDNS } else { @("1.1.1.1","1.0.0.1") }
+                $adapters = Get-NetAdapter -Physical | Where-Object { $_.Status -eq "Up" }
+                foreach ($adapter in $adapters) {
+                    try {
+                        Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses $dnsServers -ErrorAction Stop
+                        Write-Host "DNS set on $($adapter.Name): $($dnsServers -join , )"
+                    } catch {
+                        Write-Host "Could not set DNS on $($adapter.Name): $_"
+                    }
+                }
+            }
+        }
+
         # ======================================================
         # UI TWEAKS
         # ======================================================
@@ -1234,6 +1510,9 @@ function Show-MainForm {
     $y = Add-SectionLabel $pMain "Domain" $y
     $cbDomain = Add-CheckRow $pMain "Join Domain  (will prompt for domain name and credentials)" $false "Prompts for domain name and optional OU path, then joins the machine to the domain." $y; $y += 26
 
+    $y = Add-SectionLabel $pMain "Security" $y
+    $cbBitLocker = Add-CheckRow $pMain "Enable BitLocker on C:  (requires CustData USB drive connected)" $true "Enables BitLocker with TPM protector and saves the recovery key to the \BitLocker folder on the CustData USB drive. Drive must be connected before clicking Run." $y; $y += 26
+
     $y = Add-SectionLabel $pMain "Finish" $y
     $cbRestart = Add-CheckRow $pMain "Restart computer when all steps complete" $true "Prompts for confirmation before restarting." $y; $y += 10
 
@@ -1451,6 +1730,34 @@ function Show-MainForm {
     }
 
     # Select all / none buttons
+    # DNS Provider selection
+    $y3 += 8
+    $y3 = Add-SectionLabel $pReclaim "DNS Provider  (used by Set DNS Servers tweak above)" $y3
+    $dnsProviders = [ordered]@{
+        "Cloudflare  (1.1.1.1 / 1.0.0.1)  - Fast, privacy-focused"    = @("1.1.1.1","1.0.0.1")
+        "Google  (8.8.8.8 / 8.8.4.4)  - Reliable, widely used"        = @("8.8.8.8","8.8.4.4")
+        "AdGuard  (94.140.14.14 / 94.140.15.15)  - Blocks ads/trackers" = @("94.140.14.14","94.140.15.15")
+        "Quad9  (9.9.9.9 / 149.112.112.112)  - Blocks malware domains" = @("9.9.9.9","149.112.112.112")
+        "OpenDNS  (208.67.222.222 / 208.67.220.220)  - Cisco, content filtering" = @("208.67.222.222","208.67.220.220")
+    }
+    $cmbDNS = New-Object System.Windows.Forms.ComboBox
+    $cmbDNS.DropDownStyle = "DropDownList"
+    $cmbDNS.Location = New-Object System.Drawing.Point(16, $y3)
+    $cmbDNS.Size = New-Object System.Drawing.Size(700, 22)
+    foreach ($key in $dnsProviders.Keys) { $cmbDNS.Items.Add($key) | Out-Null }
+    $cmbDNS.SelectedIndex = 0
+    $ttip.SetToolTip($cmbDNS, "Select DNS provider to apply to all active ethernet adapters. Only used if Set DNS Servers is checked above.")
+    $pReclaim.Controls.Add($cmbDNS)
+    $y3 += 30
+
+    # Store selected DNS in script scope for reclaim action to read
+    $script:SelectedDNS = @("1.1.1.1","1.0.0.1")  # Cloudflare default
+    $cmbDNS.Add_SelectedIndexChanged({
+        $selected = $cmbDNS.SelectedItem
+        $script:SelectedDNS = $dnsProviders[$selected]
+    })
+
+    $y3 += 8
     $btnSelAll = New-Object System.Windows.Forms.Button
     $btnSelAll.Text = "Select All"
     $btnSelAll.Location = New-Object System.Drawing.Point(16, $y3)
@@ -1847,6 +2154,9 @@ function Show-MainForm {
             # 3. Power Profile
             if ($cbPower.Checked) { Invoke-SetPowerProfile }
 
+            # 3b. Defender exclusion for tech tools USB drive
+            Invoke-AddDefenderExclusion
+
             # 4. Chocolatey
             if ($cbInstallChoco.Checked -or $cbInstallApps.Checked -or $cbInstallM365.Checked) { Invoke-InstallChoco }
 
@@ -1920,6 +2230,15 @@ function Show-MainForm {
                     -Action1Source $txtA1Path.Text    `
                     -IHCSource     $txtIHCPath.Text
             }
+
+            # 9b. System Restore Point (before any domain join or reboot)
+            Invoke-CreateRestorePoint
+
+            # 9c. Log TPM and Secure Boot status
+            Invoke-LogSecurityHardwareStatus
+
+            # 9d. BitLocker
+            if ($cbBitLocker.Checked) { Invoke-EnableBitLocker }
 
             # 10. Join Domain
             if ($cbDomain.Checked) { Invoke-JoinDomain }
