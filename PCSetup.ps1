@@ -1624,17 +1624,18 @@ function Show-MainForm {
         $btn.BackColor = $clrLav
         $btn.ForeColor = $clrWhite
         $btn.FlatStyle = "Flat"
+        $btn.Tag = $txt   # store textbox reference on the button itself to avoid closure scoping issues
         $ttip.SetToolTip($btn, "Browse for a local installer file. You can also type or paste a URL directly into the text box.")
         $Parent.Controls.Add($btn)
 
-        # Wire browse click - capture $txt in closure via script-scoped reference
-        $txtRef = $txt
+        # Use $this.Tag to retrieve the textbox - reliable across all PS closure contexts
         $btn.Add_Click({
+            $targetTxt = $this.Tag
             $dlg = New-Object System.Windows.Forms.OpenFileDialog
             $dlg.Title            = "Select Installer File"
             $dlg.Filter           = "Installer files (*.exe;*.msi)|*.exe;*.msi|All files (*.*)|*.*"
             $dlg.InitialDirectory = if (Test-Path "C:\Pirum\agents") { "C:\Pirum\agents" } else { "C:\" }
-            if ($dlg.ShowDialog() -eq "OK") { $txtRef.Text = $dlg.FileName }
+            if ($dlg.ShowDialog() -eq "OK") { $targetTxt.Text = $dlg.FileName }
         })
 
         $Y.Value += 30
