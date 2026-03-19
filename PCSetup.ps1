@@ -219,23 +219,9 @@ function Invoke-SetPowerProfile {
 # SECTION: Layout Design (new user profiles)
 # ============================================================
 function Invoke-LayoutDesign {
-    Write-Log ">>> Applying default layout for new user profiles..."
-    $boot   = Get-Partition | Where-Object { $_.IsBoot -eq $true }
-    $OSDISK = $boot.DriveLetter + ":"
-    $xmlPath   = "C:\Pirum\PC-Build-Script-master\LayoutModification.xml"
-    $assocPath = "C:\Pirum\PC-Build-Script-master\AppAssociations.xml"
-    if (Test-Path $xmlPath) {
-        Import-StartLayout -LayoutPath $xmlPath -MountPath "$OSDISK\" -ErrorAction SilentlyContinue
-        Write-Log "    Start/taskbar layout applied."
-    } else {
-        Write-Log "    WARNING: $xmlPath not found. Skipping layout." ([System.Drawing.Color]::Yellow)
-    }
-    if (Test-Path $assocPath) {
-        dism /online /Import-DefaultAppAssociations:$assocPath | Out-Null
-        Write-Log "    Default app associations applied."
-    } else {
-        Write-Log "    WARNING: $assocPath not found. Skipping app associations." ([System.Drawing.Color]::Yellow)
-    }
+    # Delegates to the dedicated XML functions which use C:\Pirum\xml\
+    Invoke-ApplyAppAssociations   -XmlPath "C:\Pirum\xml\AppAssociations.xml"
+    Invoke-ApplyLayoutModification -XmlBasePath "C:\Pirum\xml"
 }
 
 # ============================================================
@@ -1201,7 +1187,7 @@ function Show-MainForm {
     $cbReclaim = Add-CheckRow $pMain "Run Reclaim Windows  (configure on the Reclaim Windows tab)" $true "Runs all checked privacy, system, UI, and bloatware items from the Reclaim Windows tab." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "Layout & Personalization" $y
-    $cbLayout      = Add-CheckRow $pMain "Apply Layout Design  (taskbar/start menu for new user profiles)"  $true "Imports LayoutModification.xml and AppAssociations.xml from C:\Pirum\PC-Build-Script-master\." $y; $y += 22
+    $cbLayout      = Add-CheckRow $pMain "Apply Layout Design  (taskbar/start menu for new user profiles)"  $true "Applies LayoutModification XML and AppAssociations XML from C:\Pirum\xml\. Delegates to the same functions as the Personalize tab." $y; $y += 22
     $cbPersonalize = Add-CheckRow $pMain "Apply Personalization  (configure on the Personalize tab)"        $true "Applies OEM branding, wallpaper, lock screen, and user pictures per selections on the Personalize tab." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "Management Software" $y
