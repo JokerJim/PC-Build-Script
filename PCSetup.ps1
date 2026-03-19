@@ -318,25 +318,59 @@ function Invoke-JoinDomain {
 # ============================================================
 # SECTION: Management Software
 # ============================================================
+function Get-InstallerExtension {
+    # Determine the correct extension for a downloaded installer.
+    # 1. Try the URL path (works when the URL ends in .msi or .exe)
+    # 2. Fall back to reading the file magic bytes:
+    #    MSI files begin with D0 CF 11 E0 (OLE Compound Document)
+    #    EXE/PE files begin with 4D 5A ("MZ")
+    param([string]$Url, [string]$DownloadedPath, [string]$FallbackExtension)
+    # Try URL hint first
+    $urlPath = ($Url -split "[?#]")[0]   # strip query string and fragment
+    if ($urlPath -match '\.msi$') { return ".msi" }
+    if ($urlPath -match '\.exe$') { return ".exe" }
+    # Read magic bytes from downloaded file
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($DownloadedPath)
+        if ($bytes.Length -ge 4 -and
+            $bytes[0] -eq 0xD0 -and $bytes[1] -eq 0xCF -and
+            $bytes[2] -eq 0x11 -and $bytes[3] -eq 0xE0) {
+            return ".msi"
+        }
+        if ($bytes.Length -ge 2 -and $bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) {
+            return ".exe"
+        }
+    } catch {}
+    return $FallbackExtension
+}
+
 function Resolve-Installer {
     # Given a URL or local path, returns a local file path ready to execute.
-    # If it is a URL, downloads to a temp file and returns that path.
-    # Returns $null and logs an error if the source cannot be resolved.
-    param([string]$Source, [string]$Label, [string]$Extension)
+    # For URLs, auto-detects whether the download is an MSI or EXE so the
+    # correct installer method is used regardless of what the URL looks like.
+    param([string]$Source, [string]$Label, [string]$FallbackExtension = ".exe")
     if ([string]::IsNullOrWhiteSpace($Source)) {
         Write-Log "    $Label`: no path or URL configured. Skipping." ([System.Drawing.Color]::Yellow)
         return $null
     }
     if ($Source -match '^https?://') {
         Write-Log "    Downloading $Label from URL..."
-        $tmpFile = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "PirumAgent_$Label$Extension")
+        # Download to a neutral .tmp file first, then rename with correct extension
+        $tmpBase = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "PirumAgent_$Label.tmp")
         try {
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri $Source -OutFile $tmpFile -UseBasicParsing -ErrorAction Stop
-            Write-Log "    Download complete: $tmpFile"
+            Invoke-WebRequest -Uri $Source -OutFile $tmpBase -UseBasicParsing -ErrorAction Stop
+            $ext     = Get-InstallerExtension -Url $Source -DownloadedPath $tmpBase -FallbackExtension $FallbackExtension
+            $tmpFile = $tmpBase -replace "\.tmp$", $ext
+            if ($tmpFile -ne $tmpBase) {
+                if (Test-Path $tmpFile) { Remove-Item $tmpFile -Force }
+                Rename-Item -Path $tmpBase -NewName ([System.IO.Path]::GetFileName($tmpFile)) -ErrorAction Stop
+            }
+            Write-Log "    Download complete: $tmpFile  (detected type: $ext)"
             return $tmpFile
         } catch {
             Write-Log "    ERROR downloading $Label`: $_" ([System.Drawing.Color]::Red)
+            if (Test-Path $tmpBase) { Remove-Item $tmpBase -Force -ErrorAction SilentlyContinue }
             return $null
         }
     } else {
@@ -361,7 +395,7 @@ function Invoke-InstallManagementSoftware {
 
     if ($DoNinja) {
         Write-Log ">>> Installing NinjaOne RMM agent..."
-        $installer = Resolve-Installer -Source $NinjaSource -Label "NinjaOne" -Extension ".msi"
+        $installer = Resolve-Installer -Source $NinjaSource -Label "NinjaOne" -FallbackExtension ".msi"
         if ($installer) {
             Start-Process msiexec.exe -ArgumentList "/i `"$installer`" /quiet /norestart" -Wait -ErrorAction SilentlyContinue
             Write-Log "    NinjaOne agent install complete."
@@ -370,7 +404,7 @@ function Invoke-InstallManagementSoftware {
 
     if ($DoAction1) {
         Write-Log ">>> Installing Action1 agent..."
-        $installer = Resolve-Installer -Source $Action1Source -Label "Action1" -Extension ".msi"
+        $installer = Resolve-Installer -Source $Action1Source -Label "Action1" -FallbackExtension ".msi"
         if ($installer) {
             Start-Process msiexec.exe -ArgumentList "/i `"$installer`" /quiet /norestart" -Wait -ErrorAction SilentlyContinue
             Write-Log "    Action1 agent install complete."
@@ -379,9 +413,13 @@ function Invoke-InstallManagementSoftware {
 
     if ($DoIHC) {
         Write-Log ">>> Installing Instant Housecall..."
-        $installer = Resolve-Installer -Source $IHCSource -Label "IHC" -Extension ".exe"
+        $installer = Resolve-Installer -Source $IHCSource -Label "IHC" -FallbackExtension ".msi"
         if ($installer) {
-            Start-Process $installer -Wait -ErrorAction SilentlyContinue
+            if ($installer -match "\.msi$") {
+                Start-Process msiexec.exe -ArgumentList "/i `"$installer`" /quiet /norestart" -Wait -ErrorAction SilentlyContinue
+            } else {
+                Start-Process $installer -Wait -ErrorAction SilentlyContinue
+            }
             Write-Log "    Instant Housecall install complete."
         }
     }
@@ -1695,7 +1733,7 @@ function Show-MainForm {
     $ihcRow     = Add-AgentRow $pMgmt "Install Instant Housecall" $true `
         "Installs the Instant Housecall host application. Defaults to the Pirum IHC download URL." `
         "https://pirumllc.instanthousecall.com/dlsecure.cgi?sub=pirumllc&specialistPreference=jim@pirumllc.com" `
-        "Enter a download URL (https://...) or a local file path to the IHC setup EXE. The default URL downloads directly from the Pirum Instant Housecall portal." `
+        "Enter a download URL (https://...) or a local file path to the IHC installer (MSI or EXE). The file type is detected automatically. The default URL downloads directly from the Pirum Instant Housecall portal." `
         $y5ref
     $cbIHC      = $ihcRow.Checkbox
     $txtIHCPath = $ihcRow.TextBox
