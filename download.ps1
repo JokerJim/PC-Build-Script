@@ -4,7 +4,7 @@
     Pirum Consulting LLC - Build Script Downloader
 .DESCRIPTION
     Downloads the latest PC-Build-Script package from GitHub and extracts it
-    to C:\Pirum\PC-Build-Script-master, ready for use with PCSetup_v2.ps1.
+    to C:\Pirum\PC-Build-Script-master, ready for use with PCSetup.ps1.
 .NOTES
     Pirum Consulting LLC | 330-597-0550 | pirumllc.com
 #>
@@ -21,6 +21,24 @@ function Write-Status {
     $colors = @{ INFO = "Cyan"; OK = "Green"; WARN = "Yellow"; ERROR = "Red" }
     $prefix = @{ INFO = "   "; OK = " OK"; WARN = "WARN"; ERROR = " ERR" }
     Write-Host "[$($prefix[$Level])] $Message" -ForegroundColor $colors[$Level]
+}
+
+function Wait-WithCountdown {
+    param([int]$Seconds = 30, [string]$Prompt = "Press Enter to exit")
+    Write-Host ""
+    for ($i = $Seconds; $i -gt 0; $i--) {
+        Write-Host "`r  $Prompt  (closing in $i seconds)...  " -NoNewline
+        $start = [DateTime]::Now
+        while (([DateTime]::Now - $start).TotalMilliseconds -lt 1000) {
+            if ([Console]::KeyAvailable) {
+                [Console]::ReadKey($true) | Out-Null
+                Write-Host ""
+                return
+            }
+            Start-Sleep -Milliseconds 50
+        }
+    }
+    Write-Host "`r  Closing automatically.                              "
 }
 
 # ── Re-launch as admin if needed ──
@@ -58,7 +76,7 @@ try {
 } catch {
     Write-Status "Download failed: $_" "ERROR"
     Write-Host ""
-    Read-Host "Press Enter to exit"
+    Wait-WithCountdown -Seconds 30 -Prompt "Press Enter to exit"
     Exit 1
 }
 
@@ -76,7 +94,7 @@ try {
 } catch {
     Write-Status "Extraction failed: $_" "ERROR"
     Write-Host ""
-    Read-Host "Press Enter to exit"
+    Wait-WithCountdown -Seconds 30 -Prompt "Press Enter to exit"
     Exit 1
 }
 
@@ -89,10 +107,10 @@ Write-Status "Cleanup complete." "OK"
 Write-Host ""
 if (Test-Path "$ExtractDir\PC-Build-Script-master") {
     Write-Status "Build script ready at: $ExtractDir\PC-Build-Script-master" "OK"
-    Write-Status "You can now run PCSetup_v2.ps1." "OK"
+    Write-Status "You can now run PCSetup.ps1." "OK"
 } else {
     Write-Status "Expected folder not found after extraction. Check $ExtractDir manually." "WARN"
 }
 
 Write-Host ""
-Read-Host "Press Enter to exit"
+Wait-WithCountdown -Seconds 30 -Prompt "Press Enter to exit"
