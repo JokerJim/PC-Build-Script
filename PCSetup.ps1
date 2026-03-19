@@ -57,6 +57,52 @@ function Write-Log {
 }
 
 # ============================================================
+# HELPER: Write Chocolatey output - progress lines overwrite,
+#         all other lines append normally
+# ============================================================
+function Write-ChocoLog {
+    param([string]$Text)
+    if (-not $script:LogBox) { return }
+
+    # Detect Chocolatey progress lines:
+    # - Download progress:  "XX% ..."  or  "Progress: XX%"
+    # - Download bar lines: lines containing sequences of # or = characters
+    # - Extracting lines that repeat rapidly
+    $isProgress = ($Text -match '^\s*\d+%') -or
+                  ($Text -match 'Progress:') -or
+                  ($Text -match 'Downloading\s+\d') -or
+                  ($Text -match '[#=]{5}')
+
+    if ($isProgress) {
+        # Find the start of the last line and replace it in-place
+        $script:LogBox.SelectionStart  = $script:LogBox.TextLength
+        $script:LogBox.SelectionLength = 0
+
+        $txt   = $script:LogBox.Text
+        $lastN = $txt.LastIndexOf("`n")
+        if ($lastN -ge 0) {
+            # Select from after the last newline to end and replace
+            $script:LogBox.SelectionStart  = $lastN + 1
+            $script:LogBox.SelectionLength = $script:LogBox.TextLength - ($lastN + 1)
+        } else {
+            $script:LogBox.SelectionStart  = 0
+            $script:LogBox.SelectionLength = $script:LogBox.TextLength
+        }
+        $script:LogBox.SelectionColor = [System.Drawing.ColorTranslator]::FromHtml("#6a9a50")
+        $script:LogBox.SelectedText   = "      $($Text.Trim())"
+        $script:LogBox.ScrollToCaret()
+    } else {
+        # Normal line - append with newline
+        $script:LogBox.SelectionStart  = $script:LogBox.TextLength
+        $script:LogBox.SelectionLength = 0
+        $script:LogBox.SelectionColor  = [System.Drawing.Color]::LightGreen
+        $script:LogBox.AppendText("      $Text`n")
+        $script:LogBox.ScrollToCaret()
+    }
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
+# ============================================================
 # HELPER: Ensure a registry path exists
 # ============================================================
 function Ensure-RegPath([string]$Path) {
@@ -119,9 +165,9 @@ function Invoke-InstallApps {
         Write-Log "    Installing: $id"
         if ($id -eq "microsoft-office-deployment") {
             $params = "'/Channel:Monthly /Language:en-us /RemoveMSI /Product:O365BusinessRetail /Exclude:Lync,Groove'"
-            & choco install $id --params=$params -y 2>&1 | ForEach-Object { Write-Log "      $_" }
+            & choco install $id --params=$params -y 2>&1 | ForEach-Object { Write-ChocoLog "$_" }
         } else {
-            & choco install $id -y 2>&1 | ForEach-Object { Write-Log "      $_" }
+            & choco install $id -y 2>&1 | ForEach-Object { Write-ChocoLog "$_" }
         }
     }
     Write-Log "    App installation complete."
@@ -133,7 +179,7 @@ function Invoke-InstallApps {
 function Invoke-InstallM365 {
     Write-Log ">>> Installing Microsoft 365 / Office..."
     Invoke-InstallChoco
-    & choco install microsoft-office-deployment --params="'/Channel:Monthly /Language:en-us /Product:O365BusinessRetail /Exclude:Lync,Groove'" -y 2>&1 | ForEach-Object { Write-Log "      $_" }
+    & choco install microsoft-office-deployment --params="'/Channel:Monthly /Language:en-us /Product:O365BusinessRetail /Exclude:Lync,Groove'" -y 2>&1 | ForEach-Object { Write-ChocoLog "$_" }
     Write-Log "    Microsoft 365 install complete."
 }
 
@@ -145,7 +191,7 @@ function Invoke-InstallCustomApp {
     if ([string]::IsNullOrWhiteSpace($ChocoID)) { return }
     Invoke-InstallChoco
     Write-Log ">>> Installing custom package: $ChocoID"
-    & choco install $ChocoID -y 2>&1 | ForEach-Object { Write-Log "      $_" }
+    & choco install $ChocoID -y 2>&1 | ForEach-Object { Write-ChocoLog "$_" }
     Write-Log "    Done."
 }
 
@@ -1714,12 +1760,22 @@ function Show-MainForm {
     $btnExit.FlatStyle   = "Flat"
     $pnlBottom.Controls.Add($btnExit)
 
+    $btnSaveLog          = New-Object System.Windows.Forms.Button
+    $btnSaveLog.Text     = "Save Log"
+    $btnSaveLog.Size     = New-Object System.Drawing.Size(80, 32)
+    $btnSaveLog.Location = New-Object System.Drawing.Point(286, 9)
+    $btnSaveLog.BackColor = $clrGold
+    $btnSaveLog.ForeColor = $clrDark
+    $btnSaveLog.FlatStyle = "Flat"
+    $btnSaveLog.Font      = $segUI
+    $pnlBottom.Controls.Add($btnSaveLog)
+
     $lblStatus           = New-Object System.Windows.Forms.Label
     $lblStatus.Text      = "Ready. Configure options above, then click RUN SELECTED STEPS."
     $lblStatus.ForeColor = $clrGold
     $lblStatus.Font      = $segUI
     $lblStatus.AutoSize  = $true
-    $lblStatus.Location  = New-Object System.Drawing.Point(290, 16)
+    $lblStatus.Location  = New-Object System.Drawing.Point(378, 16)
     $pnlBottom.Controls.Add($lblStatus)
 
     # ================================================================
@@ -1870,6 +1926,23 @@ function Show-MainForm {
     })
 
     $btnExit.Add_Click({ $form.Close() })
+
+    $btnSaveLog.Add_Click({
+        if ([string]::IsNullOrWhiteSpace($script:LogBox.Text)) {
+            [System.Windows.Forms.MessageBox]::Show("Nothing in the log to save yet.", "Save Log", "OK", "Information") | Out-Null
+            return
+        }
+        if (-not (Test-Path "C:\Pirum")) { New-Item "C:\Pirum" -ItemType Directory -Force | Out-Null }
+        $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+        $logPath   = "C:\Pirum\PCSetup_Log_$timestamp.txt"
+        try {
+            $script:LogBox.Text | Out-File -FilePath $logPath -Encoding UTF8 -Force
+            $lblStatus.Text = "Log saved: $logPath"
+            [System.Windows.Forms.MessageBox]::Show("Log saved to:`n$logPath", "Log Saved", "OK", "Information") | Out-Null
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show("Failed to save log:`n$_", "Error", "OK", "Error") | Out-Null
+        }
+    })
 
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $form.ShowDialog() | Out-Null
