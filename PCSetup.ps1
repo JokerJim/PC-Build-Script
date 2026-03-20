@@ -1824,7 +1824,7 @@ function Show-MainForm {
 
     # ---- Wallpaper ----
     $y4 = Add-SectionLabel $pPers "Desktop Wallpaper" $y4
-    $cbWallpaper = Add-CheckRow $pPers "Apply Desktop Wallpaper" $true "Copies the selected image to Windows wallpaper directories and sets it for all users." $y4; $y4 += 22
+    $cbWallpaper = Add-CheckRow $pPers "Apply Desktop Wallpaper" $false "Copies the selected image to Windows wallpaper directories and sets it for all users." $y4; $y4 += 22
 
     $lblWallSrc = New-Object System.Windows.Forms.Label
     $lblWallSrc.Text      = "    Image file:"
@@ -1857,7 +1857,7 @@ function Show-MainForm {
 
     # ---- Lock Screen ----
     $y4 = Add-SectionLabel $pPers "Lock Screen Image" $y4
-    $cbLockscreen = Add-CheckRow $pPers "Apply Lock Screen Image" $true "Copies the selected image and sets it as the Windows lock screen via policy and PersonalizationCSP." $y4; $y4 += 22
+    $cbLockscreen = Add-CheckRow $pPers "Apply Lock Screen Image" $false "Copies the selected image and sets it as the Windows lock screen via policy and PersonalizationCSP." $y4; $y4 += 22
 
     $lblLSSrc = New-Object System.Windows.Forms.Label
     $lblLSSrc.Text      = "    Image file:"
@@ -1890,7 +1890,7 @@ function Show-MainForm {
 
     # ---- User Account Pictures ----
     $y4 = Add-SectionLabel $pPers "User Account Pictures" $y4
-    $cbUserPics = Add-CheckRow $pPers "Apply User Account Pictures" $true "Sets the account picture for the current user SID. Prefers C:\Pirum\media\; falls back to C:\Pirum\defmedia\ if media files are not found there." $y4; $y4 += 22
+    $cbUserPics = Add-CheckRow $pPers "Apply User Account Pictures" $false "Sets the account picture for the current user SID. Prefers C:\Pirum\media\; falls back to C:\Pirum\defmedia\ if media files are not found there." $y4; $y4 += 22
 
     # Detect which source folder has pictures and show status
     $boot4 = Get-Partition | Where-Object { $_.IsBoot -eq $true }
