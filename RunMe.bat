@@ -19,6 +19,7 @@ if not exist "C:\Pirum"          mkdir "C:\Pirum"
 if not exist "C:\Pirum\media"    mkdir "C:\Pirum\media"
 if not exist "C:\Pirum\defmedia" mkdir "C:\Pirum\defmedia"
 if not exist "C:\Pirum\agents"   mkdir "C:\Pirum\agents"
+if not exist "C:\Pirum\xml"      mkdir "C:\Pirum\xml"
 echo [ OK ] Folders ready.
 
 REM ── Copy media files from the same location as this bat file ──
@@ -26,6 +27,13 @@ echo [....] Copying media files...
 if exist "%~dp0media\*"    xcopy /Y /Q "%~dp0media\*"    "C:\Pirum\media\"
 if exist "%~dp0defmedia\*" xcopy /Y /Q "%~dp0defmedia\*" "C:\Pirum\defmedia\"
 echo [ OK ] Media files copied.
+
+REM ── Copy XML layout and app association files if present ──
+if exist "%~dp0xml\*" (
+    echo [....] Copying XML configuration files...
+    xcopy /Y /Q "%~dp0xml\*" "C:\Pirum\xml\"
+    echo [ OK ] XML files copied.
+)
 
 REM ── Copy agent installers if present alongside this script ──
 if exist "%~dp0agents\*" (
