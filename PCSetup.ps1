@@ -1125,7 +1125,7 @@ function Get-ReclaimItems {
                 foreach ($adapter in $adapters) {
                     try {
                         Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses $dnsServers -ErrorAction Stop
-                        Write-Host "DNS set on $($adapter.Name): $($dnsServers -join , )"
+                        Write-Host "DNS set on $($adapter.Name): $($dnsServers -join ', ')"
                     } catch {
                         Write-Host "Could not set DNS on $($adapter.Name): $_"
                     }
