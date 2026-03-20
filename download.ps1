@@ -81,14 +81,16 @@ try {
 }
 
 # ── Extract ──
+# Clear contents of the existing folder without deleting it.
+# This removes stale files while keeping the folder intact so any running
+# instance of PCSetup.ps1 keeps its file handle and continues executing.
+$existingFolder = "$ExtractDir\PC-Build-Script-master"
+if (Test-Path $existingFolder) {
+    Write-Status "Clearing existing contents of $existingFolder..."
+    Get-ChildItem -Path $existingFolder -Recurse | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+}
 Write-Status "Extracting to $ExtractDir..."
 try {
-    # Remove existing extracted folder if present so we get a clean copy
-    $existingFolder = "$ExtractDir\PC-Build-Script-master"
-    if (Test-Path $existingFolder) {
-        Write-Status "Removing existing $existingFolder..."
-        Remove-Item $existingFolder -Recurse -Force -ErrorAction Stop
-    }
     Expand-Archive -Path $ZipPath -DestinationPath $ExtractDir -Force -ErrorAction Stop
     Write-Status "Extraction complete." "OK"
 } catch {
