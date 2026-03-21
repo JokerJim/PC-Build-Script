@@ -1396,22 +1396,10 @@ function Show-MainForm {
     # NOTE: form.Controls.Add calls for pnlBottom, pnlHeader, split
     # are deferred below after all three objects are created.
 
-    # SplitterDistance must be set after the control is parented and sized
-    $script:splitTabW = $tabW   # capture for event handler scope
-    $script:splitCtrl = $split
-    $form.Add_Shown({
-        $script:splitCtrl.Panel1MinSize = [int]($form.ClientSize.Width * 0.30)
-        $script:splitCtrl.Panel2MinSize = 150
-        try { $script:splitCtrl.SplitterDistance = $script:splitTabW } catch {}
-        # Run initial layout pass on the first visible tab
-        $tp = $tabs.SelectedTab
-        if ($tp -and $tp.Controls.Count -gt 0) {
-            Update-TabLayout $tp.Controls[0]
-        }
-    })
+
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.59"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.60"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -1523,6 +1511,20 @@ function Show-MainForm {
     $form.Controls.Add($split)       # Fill - added first, docked last
     $form.Controls.Add($pnlBottom)   # Bottom - docked before Fill
     $form.Controls.Add($pnlHeader)   # Top - docked before Fill
+
+    # Capture split and tabW as plain locals so the Add_Shown closure can see them.
+    # $script: scope is unreliable inside WinForms event handlers.
+    $splitRef = $split
+    $tabWRef  = $tabW
+    $form.Add_Shown({
+        $splitRef.Panel1MinSize = [int]($form.ClientSize.Width * 0.30)
+        $splitRef.Panel2MinSize = 150
+        try { $splitRef.SplitterDistance = $tabWRef } catch {}
+        $tp = $tabs.SelectedTab
+        if ($tp -and $tp.Controls.Count -gt 0) {
+            Update-TabLayout $tp.Controls[0]
+        }
+    })
 
     # Helper: make a scrollable tab panel
     function New-TabPage([string]$Title) {
@@ -2742,6 +2744,11 @@ Show-MainForm
 # VERSION HISTORY
 # ============================================================
 #
+# v1.60  - Bug fix: $script:splitCtrl assigned before $split was created,
+#          causing Panel1MinSize/Panel2MinSize errors. Moved Add_Shown to
+#          after form.Controls.Add($split), using $splitRef/$tabWRef closure
+#          locals instead of $script: scope which is unreliable in handlers.
+#
 # v1.59  - Root cause of z-order bug: $script:LogBox was added to pnlLog at
 #          line 1469 before it was created (line 1493) so a null reference was
 #          added. Moved LogBox creation to before the Controls.Add calls.
@@ -2819,7 +2826,7 @@ Show-MainForm
 #          PS 5. Write-Log now uses [System.Windows.Forms.MethodInvoker]$sb
 #          for cross-thread marshalling instead.
 #        - Bug fix: Panel1MinSize/Panel2MinSize set in Add_Shown via
-#          $script:splitCtrl failed because the reference was stale.
+#          $splitRef failed because the reference was stale.
 #          Min sizes now set directly on the $split object at creation
 #          time (300/150) where the property is always valid.
 #
