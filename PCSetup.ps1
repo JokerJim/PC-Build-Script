@@ -1419,7 +1419,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.42"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.43"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2297,7 +2297,7 @@ function Show-MainForm {
             # Word-wrap block labels: AutoSize labels with long text get
             # converted to fixed-width wrapping labels on first pass.
             # Short inline labels ("Image file:", "URL:", etc.) are left alone.
-            if ($ctrl -is [System.Windows.Forms.Label] -and $ctrl.AutoSize -and $ctrl.Text.Length -gt 40) {
+            if ($ctrl -is [System.Windows.Forms.Label] -and $ctrl.AutoSize -and $ctrl.Text.Length -gt 35) {
                 $ctrl.AutoSize  = $false
                 $ctrl.AutoEllipsis = $false
                 $ctrl.MaximumSize = New-Object System.Drawing.Size(0, 0)  # no cap
@@ -2682,6 +2682,10 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.43  - Lowered word-wrap label threshold from 40 to 35 characters to
+#          catch the PC Naming note label that was triggering a horizontal
+#          scrollbar without wrapping.
 #
 # v1.42  - Update-TabLayout now word-wraps long AutoSize labels (text > 40
 #          chars) on first layout pass. Uses Graphics.MeasureString to
