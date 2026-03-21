@@ -1419,7 +1419,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.44"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.45"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -1471,6 +1471,8 @@ function Show-MainForm {
         [System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
     $tblLogHdr.Padding                = New-Object System.Windows.Forms.Padding(0)
     $tblLogHdr.Margin                 = New-Object System.Windows.Forms.Padding(0)
+    # LogBox added first so Dock=Fill resolves before tblLogHdr Dock=Top
+    $pnlLog.Controls.Add($script:LogBox)
     $pnlLog.Controls.Add($tblLogHdr)
 
     $lblLogHdr             = New-Object System.Windows.Forms.Label
@@ -1502,7 +1504,6 @@ function Show-MainForm {
     $script:LogBox.ReadOnly   = $true
     $script:LogBox.ScrollBars = "Both"
     $script:LogBox.WordWrap   = $false
-    $pnlLog.Controls.Add($script:LogBox)
 
     # Wire wrap toggle
     $script:cbLogWrap = $cbLogWrap
@@ -2594,7 +2595,7 @@ function Show-MainForm {
         $timerRs     = $rs
         $timerAsync  = $asyncResult
         $timerRun    = $run
-        $timerBtn    = $btnRun
+        $script:timerBtn = $btnRun
         $timerStatus = $lblStatus
         $timerForm   = $form
 
@@ -2616,9 +2617,9 @@ function Show-MainForm {
 
                 $wasCancelled = $script:CancelRequested
                 $script:CancelRequested = $false
-                $timerBtn.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#44722a")
-                $timerBtn.Enabled   = $true
-                $timerBtn.Text      = "RUN SELECTED STEPS"
+                $script:timerBtn.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#44722a")
+                $script:timerBtn.Enabled   = $true
+                $script:timerBtn.Text      = "RUN SELECTED STEPS"
                 $timerStatus.Text   = if ($wasCancelled) { "Run cancelled." } else { "All steps complete." }
 
                 # Auto-save and restart only run on clean completion, not cancel
@@ -2688,6 +2689,14 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.45  - Bug fix: log panel tblLogHdr was added before LogBox, causing
+#          Dock=Fill on LogBox to claim full height before Dock=Top could
+#          reserve space, cutting off the top line. Reversed add order.
+#        - Bug fix: timerBtn captured as local variable inside Add_Click
+#          scriptblock - PS closure scope meant the reference was lost by
+#          the time the timer fired. Changed to $script:timerBtn so the
+#          Run button correctly resets text and color on completion.
 #
 # v1.44  - Bug fix: PC Naming tab horizontal scrollbar caused by lblNamingNote
 #          (700px fixed) and lblPreview (500px fixed) with no Anchor. Both now
