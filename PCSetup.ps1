@@ -1422,7 +1422,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.53"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.54"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2506,29 +2506,31 @@ function Show-MainForm {
             $ps.AddScript($def) | Out-Null
         }
 
-        # Inject a runspace-safe Write-Log that does not rely on script: temp vars.
-        # This overwrites the imported Write-Log with one that captures text/color
-        # in the MethodInvoker scriptblock via closure on local variables.
-        $ps.AddScript('function Write-Log {
-            param([string]$Text, [System.Drawing.Color]$Color = [System.Drawing.Color]::LightGreen)
-            if (-not $script:LogBox) { return }
-            $ts       = Get-Date -Format "HH:mm:ss"
-            $colorHex = [string]::Format("#{0:X2}{1:X2}{2:X2}", $Color.R, $Color.G, $Color.B)
-            $lb       = $script:LogBox
-            $mi = [System.Windows.Forms.MethodInvoker]{
-                $lb.SelectionStart  = $lb.TextLength
-                $lb.SelectionLength = 0
-                $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
-                $lb.AppendText("[$ts] ")
-                $lb.SelectionStart  = $lb.TextLength
-                $lb.SelectionLength = 0
-                $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($colorHex)
-                $lb.AppendText("$Text`n")
-                $lb.ScrollToCaret()
-            }
-            if ($lb.InvokeRequired) { $lb.Invoke($mi) }
-            else { & $mi }
-        }') | Out-Null
+        # Runspace-safe Write-Log: no delegate casting at definition time.
+        # Stores text in runspace script-scope vars, invokes via MethodInvoker cast at call time.
+        $ps.AddScript(@'
+function Write-Log {
+    param([string]$Text, [System.Drawing.Color]$Color = [System.Drawing.Color]::LightGreen)
+    if (-not $script:LogBox) { return }
+    $script:_rs_ts    = Get-Date -Format 'HH:mm:ss'
+    $script:_rs_hex   = [string]::Format('#{0:X2}{1:X2}{2:X2}', $Color.R, $Color.G, $Color.B)
+    $script:_rs_text  = $Text
+    $lb = $script:LogBox
+    $sb = {
+        $lb.SelectionStart  = $lb.TextLength
+        $lb.SelectionLength = 0
+        $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml('#5a7a5a')
+        $lb.AppendText("[$($script:_rs_ts)] ")
+        $lb.SelectionStart  = $lb.TextLength
+        $lb.SelectionLength = 0
+        $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($script:_rs_hex)
+        $lb.AppendText("$($script:_rs_text)`n")
+        $lb.ScrollToCaret()
+    }
+    $lb.Invoke([System.Windows.Forms.MethodInvoker]$sb)
+}
+'@) | Out-Null
+
 
 
         # Add the main work script
@@ -2720,6 +2722,14 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.54  - Bug fix: runspace Write-Log still had [MethodInvoker] cast at
+#          definition time (inside AddScript string), and closure variables
+#          $lb/$ts/$colorHex/$Text were not accessible inside the delegate.
+#          Rewrote using here-string AddScript with script-scope temp vars
+#          ($script:_rs_ts, _rs_hex, _rs_text) and MethodInvoker cast at
+#          call time only. $lb captured before the scriptblock, $sb reads
+#          it via closure which works within the same runspace session.
 #
 # v1.53  - Bug fix: [System.Windows.Forms.MethodInvoker] cast at scriptblock
 #          definition time fails because WinForms assembly is not loaded until
