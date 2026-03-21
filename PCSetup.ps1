@@ -1415,7 +1415,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.12"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.13"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -1502,10 +1502,12 @@ function Show-MainForm {
     $pnlBottom.Height    = $footH
     $pnlBottom.BackColor = $clrPurple
 
-    # All three major panels now created - add to form in correct dock order
-    $form.Controls.Add($pnlBottom)   # Bottom first
-    $form.Controls.Add($pnlHeader)   # Top second
-    $form.Controls.Add($split)       # Fill last
+    # WinForms docks in reverse add order (last added = first docked).
+    # Fill must be added first so it is docked last, filling remaining space.
+    # Top and Bottom are added after so they are docked first and claim their edges.
+    $form.Controls.Add($split)       # Fill - added first, docked last
+    $form.Controls.Add($pnlBottom)   # Bottom - docked before Fill
+    $form.Controls.Add($pnlHeader)   # Top - docked before Fill
 
     # Helper: make a scrollable tab panel
     function New-TabPage([string]$Title) {
@@ -2576,6 +2578,11 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.13  - Bug fix: WinForms docks controls in reverse add order. $split (Fill)
+#          was added last so it was docked first, consuming the entire form before
+#          header and footer could claim their edges. Corrected order: $split added
+#          first (docked last), $pnlBottom and $pnlHeader added after (docked first).
 #
 # v1.12  - Bug fix: form.Controls.Add called before pnlBottom and split were
 #          instantiated, resulting in blank window with only the header visible.
