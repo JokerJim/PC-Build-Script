@@ -50,24 +50,16 @@ function Write-Log {
     $ts       = Get-Date -Format "HH:mm:ss"
     $colorHex = [string]::Format("#{0:X2}{1:X2}{2:X2}", $Color.R, $Color.G, $Color.B)
     $lb = $script:LogBox
-    $action = [System.Windows.Forms.MethodInvoker]{
-        param()
-        $lb.SelectionStart  = $lb.TextLength
-        $lb.SelectionLength = 0
-        $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
-        $lb.AppendText("[{0}] " -f $ts)
-        $lb.SelectionStart  = $lb.TextLength
-        $lb.SelectionLength = 0
-        $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($colorHex)
-        $lb.AppendText("{0}`n" -f $Text)
-        $lb.ScrollToCaret()
-    }
-    if ($lb.InvokeRequired) {
-        $lb.Invoke($action)
-    } else {
-        & $action
-        [System.Windows.Forms.Application]::DoEvents()
-    }
+    $lb.SelectionStart  = $lb.TextLength
+    $lb.SelectionLength = 0
+    $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
+    $lb.AppendText("[$ts] ")
+    $lb.SelectionStart  = $lb.TextLength
+    $lb.SelectionLength = 0
+    $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($colorHex)
+    $lb.AppendText("$Text`n")
+    $lb.ScrollToCaret()
+    [System.Windows.Forms.Application]::DoEvents()
 }
 
 # ============================================================
@@ -1419,7 +1411,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.55"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.56"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2718,6 +2710,10 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.56  - Bug fix: main Write-Log still had [MethodInvoker] cast at definition
+#          time, failing before WinForms loads. Removed entirely - direct
+#          AppendText + DoEvents, matching the runspace version.
 #
 # v1.55  - Write-Log both main and runspace: reverted to direct AppendText
 #          pattern that was confirmed working in v1.45. Runspace Write-Log
