@@ -1406,14 +1406,18 @@ function Show-MainForm {
     $form.Controls.Add($split)
 
     # SplitterDistance must be set after the control is parented and sized
+    $script:splitTabW = $tabW   # capture for event handler scope
+    $script:splitCtrl = $split
     $form.Add_Shown({
-        $split.Panel1MinSize    = 400
-        $split.Panel2MinSize    = 300
-        try { $split.SplitterDistance = $tabW } catch {}
+        try {
+            $script:splitCtrl.Panel1MinSize    = 400
+            $script:splitCtrl.Panel2MinSize    = 300
+            $script:splitCtrl.SplitterDistance = $script:splitTabW
+        } catch {}
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.1"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
