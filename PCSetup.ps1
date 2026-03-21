@@ -1419,7 +1419,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.43"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.44"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -1722,7 +1722,10 @@ function Show-MainForm {
     $lblPreview = New-Object System.Windows.Forms.Label
     $lblPreview.Text = "---"
     $lblPreview.Location = New-Object System.Drawing.Point(180, ($yn + 1))
-    $lblPreview.Size = New-Object System.Drawing.Size(500, 22)
+    $lblPreview.Size   = New-Object System.Drawing.Size(300, 22)
+    $lblPreview.Anchor = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                           [System.Windows.Forms.AnchorStyles]::Right -bor `
+                           [System.Windows.Forms.AnchorStyles]::Top)
     $lblPreview.Font = $segB
     $lblPreview.ForeColor = $clrGreen
     $pNaming.Controls.Add($lblPreview)
@@ -1740,7 +1743,10 @@ function Show-MainForm {
     $lblNamingNote = New-Object System.Windows.Forms.Label
     $lblNamingNote.Text = "Fill in all four fields before running. The preview updates as you type. Max total length is 15 characters."
     $lblNamingNote.Location = New-Object System.Drawing.Point(16, ($yn + 8))
-    $lblNamingNote.Size = New-Object System.Drawing.Size(700, 32)
+    $lblNamingNote.Size   = New-Object System.Drawing.Size(300, 32)
+    $lblNamingNote.Anchor = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                              [System.Windows.Forms.AnchorStyles]::Right -bor `
+                              [System.Windows.Forms.AnchorStyles]::Top)
     $lblNamingNote.ForeColor = $clrLav
     $lblNamingNote.Font = $segSm
     $pNaming.Controls.Add($lblNamingNote)
@@ -2682,6 +2688,10 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.44  - Bug fix: PC Naming tab horizontal scrollbar caused by lblNamingNote
+#          (700px fixed) and lblPreview (500px fixed) with no Anchor. Both now
+#          use Anchor Left+Right+Top so Update-TabLayout resizes them correctly.
 #
 # v1.43  - Lowered word-wrap label threshold from 40 to 35 characters to
 #          catch the PC Naming note label that was triggering a horizontal
