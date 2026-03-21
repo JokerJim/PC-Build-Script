@@ -1515,8 +1515,7 @@ function Show-MainForm {
 
     $y = Add-SectionLabel $pMain "Applications" $y
     $cbInstallChoco  = Add-CheckRow $pMain "Install Chocolatey  (required before any app installs)" $true "Installs the Chocolatey package manager. Skipped if already installed." $y; $y += 22
-    $cbInstallApps   = Add-CheckRow $pMain "Install Applications  (configure on the Applications tab)" $true "Installs all checked apps from the Applications tab. Requires Chocolatey." $y; $y += 22
-    $cbInstallM365   = Add-CheckRow $pMain "Install Microsoft 365  (O365BusinessRetail, Monthly channel)" $true "Runs the dedicated M365 choco install command. Requires Chocolatey." $y; $y += 26
+    $cbInstallApps   = Add-CheckRow $pMain "Install Applications  (configure on the Applications tab)" $true "Installs all checked apps from the Applications tab, including Microsoft 365 if checked there. Requires Chocolatey." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "System Hardening" $y
     $cbReclaim       = Add-CheckRow $pMain "Run Reclaim Windows  (configure on the Reclaim Windows tab)" $true "Runs all checked privacy, system, UI, and bloatware items from the Reclaim tab." $y; $y += 26
@@ -1664,6 +1663,25 @@ function Show-MainForm {
     $y2 = 8
 
     $y2 = Add-SectionLabel $pApps "Baseline Applications  (uncheck to skip for this machine)" $y2
+
+    # Select All / Deselect All / Reset buttons
+    $btnAppsAll   = New-Object System.Windows.Forms.Button
+    $btnAppsAll.Text = "Select All"; $btnAppsAll.Location = New-Object System.Drawing.Point(16, $y2)
+    $btnAppsAll.Size = New-Object System.Drawing.Size(90, 24); $btnAppsAll.BackColor = $clrPurple
+    $btnAppsAll.ForeColor = $clrWhite; $btnAppsAll.FlatStyle = "Flat"
+    $pApps.Controls.Add($btnAppsAll)
+    $btnAppsNone  = New-Object System.Windows.Forms.Button
+    $btnAppsNone.Text = "Deselect All"; $btnAppsNone.Location = New-Object System.Drawing.Point(114, $y2)
+    $btnAppsNone.Size = New-Object System.Drawing.Size(90, 24); $btnAppsNone.BackColor = $clrLav
+    $btnAppsNone.ForeColor = $clrWhite; $btnAppsNone.FlatStyle = "Flat"
+    $pApps.Controls.Add($btnAppsNone)
+    $btnAppsReset = New-Object System.Windows.Forms.Button
+    $btnAppsReset.Text = "Reset to Defaults"; $btnAppsReset.Location = New-Object System.Drawing.Point(212, $y2)
+    $btnAppsReset.Size = New-Object System.Drawing.Size(120, 24); $btnAppsReset.BackColor = $clrGold
+    $btnAppsReset.ForeColor = $clrDark; $btnAppsReset.FlatStyle = "Flat"
+    $pApps.Controls.Add($btnAppsReset)
+    $y2 += 30
+
     $appCheckboxes = @{}
     foreach ($app in $script:BaselineApps) {
         $cb = Add-CheckRow $pApps "$($app.Name)   [ choco: $($app.ChocoID) ]" $app.Default "Chocolatey package ID: $($app.ChocoID)" $y2
@@ -1673,22 +1691,29 @@ function Show-MainForm {
 
     $y2 += 10
     $y2 = Add-SectionLabel $pApps "Microsoft 365 / Office" $y2
-    $lblM365Info = New-Object System.Windows.Forms.Label
-    $lblM365Info.Text      = "    Controlled by the Install Microsoft 365 checkbox on the Main Steps tab."
-    $lblM365Info.Font      = $segSm
-    $lblM365Info.ForeColor = $clrLav
-    $lblM365Info.AutoSize  = $true
-    $lblM365Info.Location  = New-Object System.Drawing.Point(16, $y2)
-    $pApps.Controls.Add($lblM365Info)
-    $y2 += 20
+    $cbInstallM365 = Add-CheckRow $pApps "Install Microsoft 365  (O365BusinessRetail, Monthly channel, en-us)" $true "Runs choco install microsoft-office-deployment. Separate install pass - takes longer than standard apps." $y2; $y2 += 22
     $lblM365Cmd = New-Object System.Windows.Forms.Label
     $lblM365Cmd.Text      = "    choco install microsoft-office-deployment --params=""'/Channel:Monthly /Language:en-us /Product:O365BusinessRetail /Exclude:Lync,Groove'"" -y"
     $lblM365Cmd.Font      = $segSm
     $lblM365Cmd.ForeColor = $clrLav
     $lblM365Cmd.AutoSize  = $true
-    $lblM365Cmd.Location  = New-Object System.Drawing.Point(16, $y2)
+    $lblM365Cmd.Location  = New-Object System.Drawing.Point(32, $y2)
     $pApps.Controls.Add($lblM365Cmd)
     $y2 += 30
+
+    # Wire Select All / Deselect All / Reset (after cbInstallM365 is defined)
+    $btnAppsAll.Add_Click({
+        foreach ($cb in $appCheckboxes.Values) { $cb.Checked = $true }
+        $cbInstallM365.Checked = $true
+    })
+    $btnAppsNone.Add_Click({
+        foreach ($cb in $appCheckboxes.Values) { $cb.Checked = $false }
+        $cbInstallM365.Checked = $false
+    })
+    $btnAppsReset.Add_Click({
+        foreach ($app in $script:BaselineApps) { $appCheckboxes[$app.ChocoID].Checked = $app.Default }
+        $cbInstallM365.Checked = $true
+    })
 
     $y2 = Add-SectionLabel $pApps "Add Custom App by Chocolatey ID" $y2
 
@@ -1716,13 +1741,15 @@ function Show-MainForm {
     $pApps.Controls.Add($btnCustom)
 
     $y2 += 30
-    $lblChocoRef = New-Object System.Windows.Forms.Label
-    $lblChocoRef.Text = "Browse packages: community.chocolatey.org/packages"
-    $lblChocoRef.Location = New-Object System.Drawing.Point(16, $y2)
-    $lblChocoRef.AutoSize = $true
-    $lblChocoRef.ForeColor = $clrLav
-    $lblChocoRef.Font = $segSm
-    $pApps.Controls.Add($lblChocoRef)
+    $lnkChocoRef = New-Object System.Windows.Forms.LinkLabel
+    $lnkChocoRef.Text = "Browse packages: community.chocolatey.org/packages"
+    $lnkChocoRef.Location = New-Object System.Drawing.Point(16, $y2)
+    $lnkChocoRef.AutoSize = $true
+    $lnkChocoRef.LinkColor = $clrLav
+    $lnkChocoRef.ActiveLinkColor = $clrPurple
+    $lnkChocoRef.Font = $segSm
+    $lnkChocoRef.Add_LinkClicked({ Start-Process "https://community.chocolatey.org/packages" })
+    $pApps.Controls.Add($lnkChocoRef)
 
     $y2 += 20
     $lblBaselineNote = New-Object System.Windows.Forms.Label
@@ -2192,7 +2219,6 @@ function Show-MainForm {
             DefenderExcl  = $cbDefenderExcl.Checked
             InstallChoco  = $cbInstallChoco.Checked
             InstallApps   = $cbInstallApps.Checked
-            InstallM365   = $cbInstallM365.Checked
             Reclaim       = $cbReclaim.Checked
             Layout        = $cbLayout.Checked
             Personalize   = $cbPersonalize.Checked
@@ -2221,7 +2247,7 @@ function Show-MainForm {
             Ninja         = $cbNinja.Checked;    NinjaSrc   = $txtNinjaPath.Text
             Action1       = $cbAction1.Checked;  Action1Src = $txtA1Path.Text
             IHC           = $cbIHC.Checked;      IHCSrc     = $txtIHCPath.Text
-            SelApps       = @($appCheckboxes.GetEnumerator() | Where-Object { $_.Value.Checked } | ForEach-Object { $_.Key })
+            SelApps       = @(@($appCheckboxes.GetEnumerator() | Where-Object { $_.Value.Checked } | ForEach-Object { $_.Key }) + $(if ($cbInstallM365.Checked) { @("microsoft-office-deployment") } else { @() }))
             SelDNS        = $script:SelectedDNS
             ReclaimKeys   = @($reclaimCBs.GetEnumerator() | Where-Object { $_.Value.Checked } | ForEach-Object { $_.Key })
         }
@@ -2243,14 +2269,14 @@ function Show-MainForm {
             # 3b. Defender exclusion
             if ($run.DefenderExcl) { Invoke-AddDefenderExclusion }
             # 4. Chocolatey
-            if ($run.InstallChoco -or $run.InstallApps -or $run.InstallM365) { Invoke-InstallChoco }
+            if ($run.InstallChoco -or $run.InstallApps) { Invoke-InstallChoco }
             # 5. Install Apps
             if ($run.InstallApps -and $run.SelApps.Count -gt 0) {
                 Write-Log ">>> Installing baseline applications..."
                 Invoke-InstallApps -SelectedIDs $run.SelApps
             }
-            # 5b. Install Microsoft 365
-            if ($run.InstallM365) { Invoke-InstallM365 }
+            # 5b. Install Microsoft 365 (if checked on Applications tab)
+            if ($run.InstallApps -and ($run.SelApps -contains "microsoft-office-deployment")) { Invoke-InstallM365 }
             # 6. Reclaim Windows
             if ($run.Reclaim) {
                 Write-Log ">>> Running Reclaim Windows tweaks..."
