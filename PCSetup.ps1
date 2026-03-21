@@ -1419,7 +1419,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.4"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.41"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2015,6 +2015,8 @@ function Show-MainForm {
                              [System.Windows.Forms.AnchorStyles]::Top)
     $ttip.SetToolTip($txtWallSrc, "Full path to the wallpaper image. JPG or PNG recommended. Use the Browse button to select.")
     $pPers.Controls.Add($txtWallSrc)
+    $btnWallBrowse.Location = New-Object System.Drawing.Point(200, ($y4 - 1))
+    $btnWallBrowse.Tag      = $txtWallSrc
     $btnWallBrowse.Add_Click({
         $dlg = New-Object System.Windows.Forms.OpenFileDialog
         $dlg.Title            = "Select Wallpaper Image"
@@ -2050,6 +2052,8 @@ function Show-MainForm {
                            [System.Windows.Forms.AnchorStyles]::Top)
     $ttip.SetToolTip($txtLSSrc, "Full path to the lock screen image. JPG or PNG recommended. Use the Browse button to select.")
     $pPers.Controls.Add($txtLSSrc)
+    $btnLSBrowse.Location = New-Object System.Drawing.Point(200, ($y4 - 1))
+    $btnLSBrowse.Tag      = $txtLSSrc
     $btnLSBrowse.Add_Click({
         $dlg = New-Object System.Windows.Forms.OpenFileDialog
         $dlg.Title            = "Select Lock Screen Image"
@@ -2164,7 +2168,6 @@ function Show-MainForm {
         $btn.BackColor = $clrLav
         $btn.ForeColor = $clrWhite
         $btn.FlatStyle = "Flat"
-        $btn.Tag       = $null  # set after txt is created
         $ttip.SetToolTip($btn, "Browse for a local installer file. You can also type or paste a URL directly into the text box.")
         $Parent.Controls.Add($btn)
 
@@ -2177,7 +2180,8 @@ function Show-MainForm {
                           [System.Windows.Forms.AnchorStyles]::Top)
         $ttip.SetToolTip($txt, $SourceTip)
         $Parent.Controls.Add($txt)
-        $btn.Tag = $txt
+        $btn.Tag      = $txt
+        $btn.Location = New-Object System.Drawing.Point(240, ($Y.Value - 1))
 
         # Use $this.Tag to retrieve the textbox - reliable across all PS closure contexts
         $btn.Add_Click({
@@ -2663,6 +2667,12 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.41  - Bug fix: wallpaper and lockscreen browse buttons had no Tag set
+#          so Update-TabLayout never positioned them. Agent browse buttons
+#          had Tag set to null initially and no Location placeholder.
+#          All three now have Tag pointing to their paired TextBox and a
+#          placeholder Location so they appear before the first layout pass.
 #
 # v1.4   - Replaced all container-panel and Add_Layout approaches with
 #          Update-TabLayout: a resize function that recalculates control
