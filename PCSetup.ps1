@@ -49,17 +49,24 @@ function Write-Log {
     if (-not $script:LogBox) { return }
     $ts       = Get-Date -Format "HH:mm:ss"
     $colorHex = [string]::Format("#{0:X2}{1:X2}{2:X2}", $Color.R, $Color.G, $Color.B)
-    $lb = $script:LogBox
-    $lb.SelectionStart  = $lb.TextLength
-    $lb.SelectionLength = 0
-    $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
-    $lb.AppendText("[$ts] ")
-    $lb.SelectionStart  = $lb.TextLength
-    $lb.SelectionLength = 0
-    $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($colorHex)
-    $lb.AppendText("$Text`n")
-    $lb.ScrollToCaret()
-    [System.Windows.Forms.Application]::DoEvents()
+    $action   = [System.Action]{
+        $script:LogBox.SelectionStart  = $script:LogBox.TextLength
+        $script:LogBox.SelectionLength = 0
+        $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
+        $script:LogBox.AppendText("[$ts] ")
+        $script:LogBox.SelectionStart  = $script:LogBox.TextLength
+        $script:LogBox.SelectionLength = 0
+        $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($colorHex)
+        $script:LogBox.AppendText("$Text`n")
+        $script:LogBox.ScrollToCaret()
+    }
+    # If we are on the UI thread, invoke directly; otherwise marshal via Invoke()
+    if ($script:LogBox.InvokeRequired) {
+        $script:LogBox.Invoke($action)
+    } else {
+        & $action
+        [System.Windows.Forms.Application]::DoEvents()
+    }
 }
 
 # ============================================================
@@ -1400,8 +1407,9 @@ function Show-MainForm {
     $script:splitTabW = $tabW   # capture for event handler scope
     $script:splitCtrl = $split
     $form.Add_Shown({
-        $script:splitCtrl.Panel1MinSize = [int]($form.ClientSize.Width * 0.30)
-        $script:splitCtrl.Panel2MinSize = 150
+        $minLeft = [int]($form.ClientSize.Width * 0.40)
+        $script:splitCtrl.Panel1MinSize    = [Math]::Max($minLeft, 300)
+        $script:splitCtrl.Panel2MinSize    = 200
         try { $script:splitCtrl.SplitterDistance = $script:splitTabW } catch {}
         # Run initial layout pass on the first visible tab
         $tp = $tabs.SelectedTab
@@ -1411,7 +1419,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.57"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.44"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -1429,11 +1437,9 @@ function Show-MainForm {
     # ---- SplitContainer: holds tabs (left) and log panel (right) ----
     $split                       = New-Object System.Windows.Forms.SplitContainer
     $split.Dock                  = "Fill"
-    $split.SplitterWidth  = 6
-    $split.Panel1MinSize  = 0
-    $split.Panel2MinSize  = 0
-    $split.FixedPanel     = "None"
-    $split.BackColor      = $clrPurple
+    $split.SplitterWidth         = 6
+    $split.FixedPanel            = "None"
+    $split.BackColor             = $clrPurple
     # MinSize and SplitterDistance set in Load event after control has real dimensions
 
     # Left pane: tab control fills Panel1
@@ -1465,8 +1471,6 @@ function Show-MainForm {
         [System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
     $tblLogHdr.Padding                = New-Object System.Windows.Forms.Padding(0)
     $tblLogHdr.Margin                 = New-Object System.Windows.Forms.Padding(0)
-    # LogBox added first so Dock=Fill resolves before tblLogHdr Dock=Top
-    $pnlLog.Controls.Add($script:LogBox)
     $pnlLog.Controls.Add($tblLogHdr)
 
     $lblLogHdr             = New-Object System.Windows.Forms.Label
@@ -1498,6 +1502,7 @@ function Show-MainForm {
     $script:LogBox.ReadOnly   = $true
     $script:LogBox.ScrollBars = "Both"
     $script:LogBox.WordWrap   = $false
+    $pnlLog.Controls.Add($script:LogBox)
 
     # Wire wrap toggle
     $script:cbLogWrap = $cbLogWrap
@@ -2458,7 +2463,7 @@ function Show-MainForm {
 
         # Collect all function definitions to inject into the runspace
         $fnNames = @(
-            "Ensure-RegPath","Get-WinVersion",
+            "Write-Log","Write-ChocoLog","Ensure-RegPath","Get-WinVersion",
             "Invoke-SetPCName","Invoke-SetTimeZone","Invoke-InstallChoco",
             "Invoke-InstallApps","Invoke-InstallM365","Invoke-InstallCustomApp",
             "Invoke-SetPowerProfile","Invoke-LayoutDesign","Invoke-JoinDomain",
@@ -2494,57 +2499,6 @@ function Show-MainForm {
         foreach ($def in $fnDefs) {
             $ps.AddScript($def) | Out-Null
         }
-
-        # Inject runspace-safe Write-Log as a scriptblock - no quoting issues.
-        # NOT in fnNames (which would inject the DoEvents version).
-        $ps.AddScript({
-            function Write-Log {
-                param([string]$Text, [System.Drawing.Color]$Color = [System.Drawing.Color]::LightGreen)
-                if (-not $script:LogBox) { return }
-                $ts  = Get-Date -Format 'HH:mm:ss'
-                $hex = [string]::Format('#{0:X2}{1:X2}{2:X2}', $Color.R, $Color.G, $Color.B)
-                $lb  = $script:LogBox
-                $lb.SelectionStart  = $lb.TextLength
-                $lb.SelectionLength = 0
-                $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml('#5a7a5a')
-                $lb.AppendText("[$ts] ")
-                $lb.SelectionStart  = $lb.TextLength
-                $lb.SelectionLength = 0
-                $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($hex)
-                $lb.AppendText("$Text`n")
-                $lb.ScrollToCaret()
-            }
-            function Write-ChocoLog {
-                param([string]$Text)
-                if (-not $script:LogBox) { return }
-                $isProgress = ($Text -match '^\s*\d+%') -or
-                              ($Text -match 'Progress:') -or
-                              ($Text -match 'Downloading\s+\d') -or
-                              ($Text -match '[#=]{5}')
-                $lb = $script:LogBox
-                if ($isProgress) {
-                    $lastN = $lb.Text.LastIndexOf("`n")
-                    if ($lastN -ge 0) {
-                        $lb.SelectionStart  = $lastN + 1
-                        $lb.SelectionLength = $lb.TextLength - ($lastN + 1)
-                    } else {
-                        $lb.SelectionStart  = 0
-                        $lb.SelectionLength = $lb.TextLength
-                    }
-                    $lb.SelectionColor = [System.Drawing.ColorTranslator]::FromHtml('#6a9a50')
-                    $lb.SelectedText   = "      $($Text.Trim())"
-                } else {
-                    $lb.SelectionStart  = $lb.TextLength
-                    $lb.SelectionLength = 0
-                    $lb.SelectionColor  = [System.Drawing.Color]::LightGreen
-                    $lb.AppendText("      $Text`n")
-                }
-                $lb.ScrollToCaret()
-            }
-        }) | Out-Null
-
-
-
 
         # Add the main work script
         $ps.AddScript({
@@ -2632,57 +2586,56 @@ function Show-MainForm {
         $asyncResult = $ps.BeginInvoke()
 
         # ── Timer polls every 500ms on the UI thread to check completion ──
-        $timer          = New-Object System.Windows.Forms.Timer
+        $timer = New-Object System.Windows.Forms.Timer
         $timer.Interval = 500
 
-        # Store all needed references in the timer Tag hashtable.
-        # Tag is a property on the timer object itself - always accessible via $this.Tag
-        $timer.Tag = @{
-            Ps     = $ps
-            Rs     = $rs
-            Async  = $asyncResult
-            Run    = $run
-            Btn    = $btnRun
-            Status = $lblStatus
-        }
+        # Capture needed references for the timer closure
+        $timerPs     = $ps
+        $timerRs     = $rs
+        $timerAsync  = $asyncResult
+        $timerRun    = $run
+        $timerBtn    = $btnRun
+        $timerStatus = $lblStatus
+        $timerForm   = $form
 
         $timer.Add_Tick({
-            $t = $this.Tag
-            if ($t.Async.IsCompleted) {
-                $this.Stop()
-                $this.Dispose()
+            if ($timerAsync.IsCompleted) {
+                $timer.Stop()
+                $timer.Dispose()
 
                 # Collect any terminating errors from the runspace
-                if ($t.Ps -and $t.Ps.HadErrors) {
-                    $t.Ps.Streams.Error | ForEach-Object {
+                if ($timerPs.HadErrors) {
+                    $timerPs.Streams.Error | ForEach-Object {
                         Write-Log "    Runspace error: $_" ([System.Drawing.Color]::Red)
                     }
                 }
-                if ($t.Ps)  { try { $t.Ps.EndInvoke($t.Async) | Out-Null } catch {}; $t.Ps.Dispose() }
-                if ($t.Rs)  { $t.Rs.Close(); $t.Rs.Dispose() }
+                $timerPs.EndInvoke($timerAsync) | Out-Null
+                $timerPs.Dispose()
+                $timerRs.Close()
+                $timerRs.Dispose()
 
                 $wasCancelled = $script:CancelRequested
                 $script:CancelRequested = $false
-                $t.Btn.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#44722a")
-                $t.Btn.Enabled   = $true
-                $t.Btn.Text      = "RUN SELECTED STEPS"
-                $t.Status.Text   = if ($wasCancelled) { "Run cancelled." } else { "All steps complete." }
+                $timerBtn.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#44722a")
+                $timerBtn.Enabled   = $true
+                $timerBtn.Text      = "RUN SELECTED STEPS"
+                $timerStatus.Text   = if ($wasCancelled) { "Run cancelled." } else { "All steps complete." }
 
-                # Auto-save (only on clean completion)
-                if (-not $wasCancelled -and $t.Run.AutoSaveLog) {
+                # Auto-save and restart only run on clean completion, not cancel
+                if (-not $script:CancelRequested -and $timerRun.AutoSaveLog) {
                     if (-not (Test-Path "C:\Pirum")) { New-Item "C:\Pirum" -ItemType Directory -Force | Out-Null }
                     $ts2 = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
                     $lp  = "C:\Pirum\PCSetup_Log_$ts2.txt"
                     try {
                         $script:LogBox.Text | Out-File -FilePath $lp -Encoding UTF8 -Force
-                        $t.Status.Text = "Complete. Log saved: $lp"
+                        $timerStatus.Text = "Complete. Log saved: $lp"
                     } catch {
                         Write-Log "    Could not auto-save log: $_" ([System.Drawing.Color]::Yellow)
                     }
                 }
 
-                # Restart prompt (only on clean completion)
-                if (-not $wasCancelled -and $t.Run.Restart) {
+                # Restart prompt
+                if (-not $script:CancelRequested -and $timerRun.Restart) {
                     $res = [System.Windows.Forms.MessageBox]::Show(
                         "All selected steps are complete.`n`nRestart the computer now?",
                         "Restart",
@@ -2735,82 +2688,6 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
-#
-# v1.57  - Root cause fix: Write-Log and Write-ChocoLog were in fnNames, so
-#          the main-session versions (with DoEvents) were injected into the
-#          runspace and ran on a background thread where DoEvents does nothing.
-#          Removed both from fnNames. Replaced the fragile here-string/escaped-
-#          string injection with a clean scriptblock AddScript containing both
-#          functions - no quoting issues, variables expand correctly at runtime.
-#
-# v1.56  - Bug fix: main Write-Log still had [MethodInvoker] cast at definition
-#          time, failing before WinForms loads. Removed entirely - direct
-#          AppendText + DoEvents, matching the runspace version.
-#
-# v1.55  - Write-Log both main and runspace: reverted to direct AppendText
-#          pattern that was confirmed working in v1.45. Runspace Write-Log
-#          drops InvokeRequired/Invoke entirely - direct property access
-#          works because the STA runspace shares the COM apartment with
-#          the UI thread. Main Write-Log keeps MethodInvoker for the
-#          InvokeRequired path but uses lb.Invoke() with a captured $lb
-#          reference and -f string formatting to avoid scope issues.
-#
-# v1.54  - Bug fix: runspace Write-Log still had [MethodInvoker] cast at
-#          definition time (inside AddScript string), and closure variables
-#          $lb/$ts/$colorHex/$Text were not accessible inside the delegate.
-#          Rewrote using here-string AddScript with script-scope temp vars
-#          ($script:_rs_ts, _rs_hex, _rs_text) and MethodInvoker cast at
-#          call time only. $lb captured before the scriptblock, $sb reads
-#          it via closure which works within the same runspace session.
-#
-# v1.53  - Bug fix: [System.Windows.Forms.MethodInvoker] cast at scriptblock
-#          definition time fails because WinForms assembly is not loaded until
-#          Show-MainForm runs Add-Type. Cast moved to call time inside the
-#          InvokeRequired branch, where WinForms is guaranteed loaded.
-#
-# v1.52  - Bug fix: Write-Log inside the runspace relied on $script:_logTs,
-#          $script:_logColor, $script:_logText set in the main session scope,
-#          which are invisible to the runspace. Injected a runspace-specific
-#          Write-Log after the function imports that captures $ts, $colorHex,
-#          $Text and $lb (LogBox ref) as local closure variables, eliminating
-#          the cross-scope dependency entirely.
-#
-# v1.51  - Bug fix: timer closure variables set via $script: inside Add_Click
-#          were not accessible from Add_Tick (different scriptblock context).
-#          Replaced with Tag hashtable pattern: all runspace/UI references
-#          stored in $timer.Tag, retrieved via $this.Tag inside Add_Tick.
-#          This reliably carries state across the event handler boundary.
-#          Also added null guards on Ps/Rs cleanup and used $wasCancelled
-#          consistently for auto-save and restart checks.
-#
-# v1.5   - Bug fix: Write-Log scriptblock executed via Control.Invoke() could
-#          not access local variables $ts, $colorHex, $Text (scope lost when
-#          crossing thread boundary). Values now stored in $script:_logTs,
-#          $script:_logColor, $script:_logText before invoking.
-#        - Bug fix: all timer closure variables ($timerPs, $timerRs,
-#          $timerAsync, $timerRun, $timerStatus, $timerForm) promoted to
-#          $script: scope so the Add_Tick handler can access them.
-#          This fixes the Cancel button not reverting to Run on completion.
-#        - Bug fix: SplitContainer Panel1MinSize/Panel2MinSize set to 0 at
-#          creation (width is 0, any positive value fails validation).
-#          Real values (30%% of width / 150px) set in Add_Shown where the
-#          form has been measured.
-#
-# v1.46  - Bug fix: [System.Action]{ } delegate cast syntax not supported in
-#          PS 5. Write-Log now uses [System.Windows.Forms.MethodInvoker]$sb
-#          for cross-thread marshalling instead.
-#        - Bug fix: Panel1MinSize/Panel2MinSize set in Add_Shown via
-#          $script:splitCtrl failed because the reference was stale.
-#          Min sizes now set directly on the $split object at creation
-#          time (300/150) where the property is always valid.
-#
-# v1.45  - Bug fix: log panel tblLogHdr was added before LogBox, causing
-#          Dock=Fill on LogBox to claim full height before Dock=Top could
-#          reserve space, cutting off the top line. Reversed add order.
-#        - Bug fix: timerBtn captured as local variable inside Add_Click
-#          scriptblock - PS closure scope meant the reference was lost by
-#          the time the timer fired. Changed to $script:timerBtn so the
-#          Run button correctly resets text and color on completion.
 #
 # v1.44  - Bug fix: PC Naming tab horizontal scrollbar caused by lblNamingNote
 #          (700px fixed) and lblPreview (500px fixed) with no Anchor. Both now
