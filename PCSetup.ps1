@@ -1378,7 +1378,7 @@ function Show-MainForm {
     # Footer: anchored Bottom+Left+Right, floats at the bottom edge on resize.
     # Layout constants
     $tabW   = 724   # left tab panel width
-    $bodyH  = 618   # height of the tab+log area
+    $bodyH  = 718   # height of the tab+log area
     $footH  = 50
     $hdrH   = 62
     $splitterW = 6
@@ -1407,14 +1407,14 @@ function Show-MainForm {
     $script:splitTabW = $tabW   # capture for event handler scope
     $script:splitCtrl = $split
     $form.Add_Shown({
-        $minLeft = [int]($form.ClientSize.Width * 0.30)
+        $minLeft = [int]($form.ClientSize.Width * 0.40)
         $script:splitCtrl.Panel1MinSize    = [Math]::Max($minLeft, 300)
         $script:splitCtrl.Panel2MinSize    = 200
         try { $script:splitCtrl.SplitterDistance = $script:splitTabW } catch {}
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.2"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.3"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -1967,7 +1967,10 @@ function Show-MainForm {
         $txt = New-Object System.Windows.Forms.TextBox
         $txt.Text     = $Default
         $txt.Location = New-Object System.Drawing.Point(200, ($Y - 1))
-        $txt.Size     = New-Object System.Drawing.Size(500, 22)
+        $txt.Size     = New-Object System.Drawing.Size(2000, 22)
+        $txt.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                          [System.Windows.Forms.AnchorStyles]::Right -bor `
+                          [System.Windows.Forms.AnchorStyles]::Top)
         if ($Tip) { $ttip.SetToolTip($txt, $Tip) }
         $Parent.Controls.Add($txt)
         return [PSCustomObject]@{ Checkbox = $cb; TextBox = $txt }
@@ -1988,30 +1991,28 @@ function Show-MainForm {
     $lblWallSrc.AutoSize  = $true
     $lblWallSrc.ForeColor = $clrGray
     $pPers.Controls.Add($lblWallSrc)
-    $txtWallSrc = New-Object System.Windows.Forms.TextBox
-    $txtWallSrc.Text     = "C:\Pirum\media\background.jpg"
-    $txtWallSrc.Location = New-Object System.Drawing.Point(120, $y4)
-    $txtWallSrc.Size     = New-Object System.Drawing.Size(2000, 22)
-    $txtWallSrc.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+    # Wallpaper file row: container panel with Dock so resize works reliably
+    $pnlWallRow = New-Object System.Windows.Forms.Panel
+    $pnlWallRow.Location = New-Object System.Drawing.Point(120, $y4)
+    $pnlWallRow.Height   = 24
+    $pnlWallRow.Size     = New-Object System.Drawing.Size(2000, 24)
+    $pnlWallRow.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
                              [System.Windows.Forms.AnchorStyles]::Right -bor `
                              [System.Windows.Forms.AnchorStyles]::Top)
-    $ttip.SetToolTip($txtWallSrc, "Full path to the wallpaper image. JPG or PNG recommended. Use the Browse button to select.")
-    $pPers.Controls.Add($txtWallSrc)
+    $pPers.Controls.Add($pnlWallRow)
     $btnWallBrowse = New-Object System.Windows.Forms.Button
     $btnWallBrowse.Text      = "Browse..."
-    $btnWallBrowse.Location  = New-Object System.Drawing.Point(120, ($y4 - 1))
+    $btnWallBrowse.Dock      = "Right"
     $btnWallBrowse.Size      = New-Object System.Drawing.Size(80, 24)
     $btnWallBrowse.BackColor = $clrLav
     $btnWallBrowse.ForeColor = $clrWhite
     $btnWallBrowse.FlatStyle = "Flat"
-    $btnWallBrowse.Anchor    = ([System.Windows.Forms.AnchorStyles]::Right -bor `
-                                [System.Windows.Forms.AnchorStyles]::Top)
-    $pPers.Controls.Add($btnWallBrowse)
-    # Adjust textbox right margin to not overlap browse button
-    $btnWallBrowse.Add_Layout({
-        $txtWallSrc.Size = New-Object System.Drawing.Size(
-            ($btnWallBrowse.Left - $txtWallSrc.Left - 4), 22)
-    })
+    $pnlWallRow.Controls.Add($btnWallBrowse)
+    $txtWallSrc = New-Object System.Windows.Forms.TextBox
+    $txtWallSrc.Text     = "C:\Pirum\media\background.jpg"
+    $txtWallSrc.Dock     = "Fill"
+    $ttip.SetToolTip($txtWallSrc, "Full path to the wallpaper image. JPG or PNG recommended. Use the Browse button to select.")
+    $pnlWallRow.Controls.Add($txtWallSrc)
     $btnWallBrowse.Add_Click({
         $dlg = New-Object System.Windows.Forms.OpenFileDialog
         $dlg.Title            = "Select Wallpaper Image"
@@ -2031,29 +2032,28 @@ function Show-MainForm {
     $lblLSSrc.AutoSize  = $true
     $lblLSSrc.ForeColor = $clrGray
     $pPers.Controls.Add($lblLSSrc)
-    $txtLSSrc = New-Object System.Windows.Forms.TextBox
-    $txtLSSrc.Text     = "C:\Pirum\media\lockscreen.jpg"
-    $txtLSSrc.Location = New-Object System.Drawing.Point(120, $y4)
-    $txtLSSrc.Size     = New-Object System.Drawing.Size(2000, 22)
-    $txtLSSrc.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+    # Lockscreen file row: container panel with Dock
+    $pnlLSRow = New-Object System.Windows.Forms.Panel
+    $pnlLSRow.Location = New-Object System.Drawing.Point(120, $y4)
+    $pnlLSRow.Height   = 24
+    $pnlLSRow.Size     = New-Object System.Drawing.Size(2000, 24)
+    $pnlLSRow.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
                            [System.Windows.Forms.AnchorStyles]::Right -bor `
                            [System.Windows.Forms.AnchorStyles]::Top)
-    $ttip.SetToolTip($txtLSSrc, "Full path to the lock screen image. JPG or PNG recommended. Use the Browse button to select.")
-    $pPers.Controls.Add($txtLSSrc)
+    $pPers.Controls.Add($pnlLSRow)
     $btnLSBrowse = New-Object System.Windows.Forms.Button
     $btnLSBrowse.Text      = "Browse..."
-    $btnLSBrowse.Location  = New-Object System.Drawing.Point(120, ($y4 - 1))
+    $btnLSBrowse.Dock      = "Right"
     $btnLSBrowse.Size      = New-Object System.Drawing.Size(80, 24)
     $btnLSBrowse.BackColor = $clrLav
     $btnLSBrowse.ForeColor = $clrWhite
     $btnLSBrowse.FlatStyle = "Flat"
-    $btnLSBrowse.Anchor    = ([System.Windows.Forms.AnchorStyles]::Right -bor `
-                              [System.Windows.Forms.AnchorStyles]::Top)
-    $pPers.Controls.Add($btnLSBrowse)
-    $btnLSBrowse.Add_Layout({
-        $txtLSSrc.Size = New-Object System.Drawing.Size(
-            ($btnLSBrowse.Left - $txtLSSrc.Left - 4), 22)
-    })
+    $pnlLSRow.Controls.Add($btnLSBrowse)
+    $txtLSSrc = New-Object System.Windows.Forms.TextBox
+    $txtLSSrc.Text     = "C:\Pirum\media\lockscreen.jpg"
+    $txtLSSrc.Dock     = "Fill"
+    $ttip.SetToolTip($txtLSSrc, "Full path to the lock screen image. JPG or PNG recommended. Use the Browse button to select.")
+    $pnlLSRow.Controls.Add($txtLSSrc)
     $btnLSBrowse.Add_Click({
         $dlg = New-Object System.Windows.Forms.OpenFileDialog
         $dlg.Title            = "Select Lock Screen Image"
@@ -2162,34 +2162,31 @@ function Show-MainForm {
         $lbl.ForeColor = $clrGray
         $Parent.Controls.Add($lbl)
 
-        $txt = New-Object System.Windows.Forms.TextBox
-        $txt.Text     = $DefaultSource
-        $txt.Location = New-Object System.Drawing.Point(148, $Y.Value)
-        $txt.Size     = New-Object System.Drawing.Size(2000, 22)
-        $txt.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
-                          [System.Windows.Forms.AnchorStyles]::Right -bor `
-                          [System.Windows.Forms.AnchorStyles]::Top)
-        $ttip.SetToolTip($txt, $SourceTip)
-        $Parent.Controls.Add($txt)
+        # Container row panel: btn Dock=Right, txt Dock=Fill
+        $rowPnl = New-Object System.Windows.Forms.Panel
+        $rowPnl.Location = New-Object System.Drawing.Point(148, $Y.Value)
+        $rowPnl.Size     = New-Object System.Drawing.Size(2000, 24)
+        $rowPnl.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                             [System.Windows.Forms.AnchorStyles]::Right -bor `
+                             [System.Windows.Forms.AnchorStyles]::Top)
+        $Parent.Controls.Add($rowPnl)
 
         $btn = New-Object System.Windows.Forms.Button
-        $btn.Text     = "Browse..."
-        $btn.Location = New-Object System.Drawing.Point(148, ($Y.Value - 1))
-        $btn.Size     = New-Object System.Drawing.Size(80, 24)
+        $btn.Text      = "Browse..."
+        $btn.Dock      = "Right"
+        $btn.Size      = New-Object System.Drawing.Size(80, 24)
         $btn.BackColor = $clrLav
         $btn.ForeColor = $clrWhite
         $btn.FlatStyle = "Flat"
-        $btn.Anchor    = ([System.Windows.Forms.AnchorStyles]::Right -bor `
-                           [System.Windows.Forms.AnchorStyles]::Top)
-        $btn.Tag = $txt
         $ttip.SetToolTip($btn, "Browse for a local installer file. You can also type or paste a URL directly into the text box.")
-        $Parent.Controls.Add($btn)
-        # Keep textbox right edge clear of browse button
-        $btnRef = $btn; $txtRef2 = $txt
-        $btn.Add_Layout({
-            $txtRef2.Size = New-Object System.Drawing.Size(
-                ($btnRef.Left - $txtRef2.Left - 4), 22)
-        })
+        $rowPnl.Controls.Add($btn)
+
+        $txt = New-Object System.Windows.Forms.TextBox
+        $txt.Text = $DefaultSource
+        $txt.Dock = "Fill"
+        $ttip.SetToolTip($txt, $SourceTip)
+        $rowPnl.Controls.Add($txt)
+        $btn.Tag = $txt
 
         # Use $this.Tag to retrieve the textbox - reliable across all PS closure contexts
         $btn.Add_Click({
@@ -2618,6 +2615,16 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.3   - Window height increased by 100px (bodyH 618->718).
+#        - Left panel minimum width increased to 40%% of form width.
+#        - OEM information textboxes now anchor Left+Right so they fill
+#          available width instead of extending past the panel edge.
+#        - Wallpaper and lockscreen file-picker rows replaced with
+#          container panels using Dock=Right on browse button and
+#          Dock=Fill on textbox - reliable resize without overflow.
+#        - Management tab agent path rows use same container panel
+#          pattern; all three fields now resize correctly.
 #
 # v1.2   - Layout overhaul: section labels and checkboxes now use initial width
 #          of 2000px + Anchor Left+Right+Top instead of ClientSize.Width (which
