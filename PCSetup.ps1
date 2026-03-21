@@ -49,11 +49,11 @@ function Write-Log {
     if (-not $script:LogBox) { return }
     $ts       = Get-Date -Format "HH:mm:ss"
     $colorHex = [string]::Format("#{0:X2}{1:X2}{2:X2}", $Color.R, $Color.G, $Color.B)
-    # Store in script scope so the MethodInvoker scriptblock can access them
+    # Store in script scope so the scriptblock can access them across threads
     $script:_logTs    = $ts
     $script:_logColor = $colorHex
     $script:_logText  = $Text
-    $sb = [System.Windows.Forms.MethodInvoker]{
+    $sb = {
         $script:LogBox.SelectionStart  = $script:LogBox.TextLength
         $script:LogBox.SelectionLength = 0
         $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
@@ -65,7 +65,8 @@ function Write-Log {
         $script:LogBox.ScrollToCaret()
     }
     if ($script:LogBox.InvokeRequired) {
-        $script:LogBox.Invoke($sb)
+        # Cast to MethodInvoker at call time, after WinForms assembly is loaded
+        $script:LogBox.Invoke([System.Windows.Forms.MethodInvoker]$sb)
     } else {
         & $sb
         [System.Windows.Forms.Application]::DoEvents()
@@ -1421,7 +1422,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.52"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.53"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2719,6 +2720,11 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.53  - Bug fix: [System.Windows.Forms.MethodInvoker] cast at scriptblock
+#          definition time fails because WinForms assembly is not loaded until
+#          Show-MainForm runs Add-Type. Cast moved to call time inside the
+#          InvokeRequired branch, where WinForms is guaranteed loaded.
 #
 # v1.52  - Bug fix: Write-Log inside the runspace relied on $script:_logTs,
 #          $script:_logColor, $script:_logText set in the main session scope,
