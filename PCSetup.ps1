@@ -1407,15 +1407,14 @@ function Show-MainForm {
     $script:splitTabW = $tabW   # capture for event handler scope
     $script:splitCtrl = $split
     $form.Add_Shown({
-        try {
-            $script:splitCtrl.Panel1MinSize    = 400
-            $script:splitCtrl.Panel2MinSize    = 300
-            $script:splitCtrl.SplitterDistance = $script:splitTabW
-        } catch {}
+        $minLeft = [int]($form.ClientSize.Width * 0.30)
+        $script:splitCtrl.Panel1MinSize    = [Math]::Max($minLeft, 300)
+        $script:splitCtrl.Panel2MinSize    = 200
+        try { $script:splitCtrl.SplitterDistance = $script:splitTabW } catch {}
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.13"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.2"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -1452,33 +1451,43 @@ function Show-MainForm {
     $split.Panel2.Controls.Add($pnlLog)
 
     # Log panel header bar (purple, same height as section labels)
-    $pnlLogHdr             = New-Object System.Windows.Forms.Panel
-    $pnlLogHdr.Dock        = "Top"
-    $pnlLogHdr.Height      = 22
-    $pnlLogHdr.BackColor   = $clrPurple
-    $pnlLog.Controls.Add($pnlLogHdr)
+    # Log header: TableLayoutPanel gives reliable right-anchored checkbox
+    $tblLogHdr                        = New-Object System.Windows.Forms.TableLayoutPanel
+    $tblLogHdr.Dock                   = "Top"
+    $tblLogHdr.Height                 = 22
+    $tblLogHdr.BackColor              = $clrPurple
+    $tblLogHdr.ColumnCount            = 2
+    $tblLogHdr.RowCount               = 1
+    $tblLogHdr.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle(
+        [System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+    $tblLogHdr.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle(
+        [System.Windows.Forms.SizeType]::AutoSize))) | Out-Null
+    $tblLogHdr.RowStyles.Add((New-Object System.Windows.Forms.RowStyle(
+        [System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+    $tblLogHdr.Padding                = New-Object System.Windows.Forms.Padding(0)
+    $tblLogHdr.Margin                 = New-Object System.Windows.Forms.Padding(0)
+    $pnlLog.Controls.Add($tblLogHdr)
 
     $lblLogHdr             = New-Object System.Windows.Forms.Label
     $lblLogHdr.Text        = "  Run Log"
     $lblLogHdr.Font        = $segB
     $lblLogHdr.ForeColor   = $clrWhite
     $lblLogHdr.BackColor   = $clrPurple
-    $lblLogHdr.AutoSize    = $true
-    $lblLogHdr.Location    = New-Object System.Drawing.Point(0, 3)
-    $pnlLogHdr.Controls.Add($lblLogHdr)
+    $lblLogHdr.Dock        = "Fill"
+    $lblLogHdr.TextAlign   = [System.Drawing.ContentAlignment]::MiddleLeft
+    $tblLogHdr.Controls.Add($lblLogHdr, 0, 0)
 
-    # Word wrap toggle checkbox in the log header
     $cbLogWrap             = New-Object System.Windows.Forms.CheckBox
-    $cbLogWrap.Text        = "Wrap"
+    $cbLogWrap.Text        = "Wrap "
     $cbLogWrap.Checked     = $false
     $cbLogWrap.ForeColor   = $clrGold
     $cbLogWrap.BackColor   = $clrPurple
     $cbLogWrap.Font        = $segSm
     $cbLogWrap.AutoSize    = $true
-    $cbLogWrap.Location    = New-Object System.Drawing.Point(100, 3)  # Anchor Right overrides X
-    $cbLogWrap.Anchor      = ([System.Windows.Forms.AnchorStyles]::Top -bor `
-                              [System.Windows.Forms.AnchorStyles]::Right)
-    $pnlLogHdr.Controls.Add($cbLogWrap)
+    $cbLogWrap.Dock        = "Fill"
+    $cbLogWrap.TextAlign   = [System.Drawing.ContentAlignment]::MiddleRight
+    $cbLogWrap.CheckAlign  = [System.Drawing.ContentAlignment]::MiddleRight
+    $tblLogHdr.Controls.Add($cbLogWrap, 1, 0)
 
     $script:LogBox         = New-Object System.Windows.Forms.RichTextBox
     $script:LogBox.Dock    = "Fill"
@@ -1491,9 +1500,10 @@ function Show-MainForm {
     $pnlLog.Controls.Add($script:LogBox)
 
     # Wire wrap toggle
+    $script:cbLogWrap = $cbLogWrap
     $cbLogWrap.Add_CheckedChanged({
-        $script:LogBox.WordWrap   = $cbLogWrap.Checked
-        $script:LogBox.ScrollBars = if ($cbLogWrap.Checked) { "Vertical" } else { "Both" }
+        $script:LogBox.WordWrap   = $script:cbLogWrap.Checked
+        $script:LogBox.ScrollBars = if ($script:cbLogWrap.Checked) { "Vertical" } else { "Both" }
     })
 
     # ---- Footer: docked to bottom ----
@@ -1519,15 +1529,16 @@ function Show-MainForm {
         return $tp
     }
 
-    # Helper: section divider label - anchored Left+Right so it scales with panel
+    # Helper: section divider label
+    # Uses a large initial width + Anchor L+R so it stretches to fill the panel.
+    # Do NOT use $Parent.ClientSize.Width - it is 0 when tabs have not yet been shown.
     function Add-SectionLabel([System.Windows.Forms.Control]$Parent, [string]$Text, [int]$Y) {
         $lbl             = New-Object System.Windows.Forms.Label
         $lbl.Text        = "  $Text"
         $lbl.Font        = $segB
         $lbl.BackColor   = $clrPurple
         $lbl.ForeColor   = $clrWhite
-        $lbl.Size        = New-Object System.Drawing.Size(($Parent.ClientSize.Width - 12), 20)
-        $lbl.MinimumSize = New-Object System.Drawing.Size(200, 20)
+        $lbl.Size        = New-Object System.Drawing.Size(2000, 20)
         $lbl.Location    = New-Object System.Drawing.Point(6, $Y)
         $lbl.Anchor      = ([System.Windows.Forms.AnchorStyles]::Left -bor `
                              [System.Windows.Forms.AnchorStyles]::Right -bor `
@@ -1541,8 +1552,7 @@ function Show-MainForm {
         $cb              = New-Object System.Windows.Forms.CheckBox
         $cb.Text         = $Text
         $cb.Checked      = $Checked
-        $cb.Size         = New-Object System.Drawing.Size(($Parent.ClientSize.Width - $Indent - 8), 19)
-        $cb.MinimumSize  = New-Object System.Drawing.Size(200, 19)
+        $cb.Size         = New-Object System.Drawing.Size(2000, 19)
         $cb.Location     = New-Object System.Drawing.Point($Indent, $Y)
         $cb.Anchor       = ([System.Windows.Forms.AnchorStyles]::Left -bor `
                              [System.Windows.Forms.AnchorStyles]::Right -bor `
@@ -1981,17 +1991,27 @@ function Show-MainForm {
     $txtWallSrc = New-Object System.Windows.Forms.TextBox
     $txtWallSrc.Text     = "C:\Pirum\media\background.jpg"
     $txtWallSrc.Location = New-Object System.Drawing.Point(120, $y4)
-    $txtWallSrc.Size     = New-Object System.Drawing.Size(680, 22)
+    $txtWallSrc.Size     = New-Object System.Drawing.Size(2000, 22)
+    $txtWallSrc.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                             [System.Windows.Forms.AnchorStyles]::Right -bor `
+                             [System.Windows.Forms.AnchorStyles]::Top)
     $ttip.SetToolTip($txtWallSrc, "Full path to the wallpaper image. JPG or PNG recommended. Use the Browse button to select.")
     $pPers.Controls.Add($txtWallSrc)
     $btnWallBrowse = New-Object System.Windows.Forms.Button
     $btnWallBrowse.Text      = "Browse..."
-    $btnWallBrowse.Location  = New-Object System.Drawing.Point(808, ($y4 - 1))
+    $btnWallBrowse.Location  = New-Object System.Drawing.Point(120, ($y4 - 1))
     $btnWallBrowse.Size      = New-Object System.Drawing.Size(80, 24)
     $btnWallBrowse.BackColor = $clrLav
     $btnWallBrowse.ForeColor = $clrWhite
     $btnWallBrowse.FlatStyle = "Flat"
+    $btnWallBrowse.Anchor    = ([System.Windows.Forms.AnchorStyles]::Right -bor `
+                                [System.Windows.Forms.AnchorStyles]::Top)
     $pPers.Controls.Add($btnWallBrowse)
+    # Adjust textbox right margin to not overlap browse button
+    $btnWallBrowse.Add_Layout({
+        $txtWallSrc.Size = New-Object System.Drawing.Size(
+            ($btnWallBrowse.Left - $txtWallSrc.Left - 4), 22)
+    })
     $btnWallBrowse.Add_Click({
         $dlg = New-Object System.Windows.Forms.OpenFileDialog
         $dlg.Title            = "Select Wallpaper Image"
@@ -2014,17 +2034,26 @@ function Show-MainForm {
     $txtLSSrc = New-Object System.Windows.Forms.TextBox
     $txtLSSrc.Text     = "C:\Pirum\media\lockscreen.jpg"
     $txtLSSrc.Location = New-Object System.Drawing.Point(120, $y4)
-    $txtLSSrc.Size     = New-Object System.Drawing.Size(680, 22)
+    $txtLSSrc.Size     = New-Object System.Drawing.Size(2000, 22)
+    $txtLSSrc.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                           [System.Windows.Forms.AnchorStyles]::Right -bor `
+                           [System.Windows.Forms.AnchorStyles]::Top)
     $ttip.SetToolTip($txtLSSrc, "Full path to the lock screen image. JPG or PNG recommended. Use the Browse button to select.")
     $pPers.Controls.Add($txtLSSrc)
     $btnLSBrowse = New-Object System.Windows.Forms.Button
     $btnLSBrowse.Text      = "Browse..."
-    $btnLSBrowse.Location  = New-Object System.Drawing.Point(808, ($y4 - 1))
+    $btnLSBrowse.Location  = New-Object System.Drawing.Point(120, ($y4 - 1))
     $btnLSBrowse.Size      = New-Object System.Drawing.Size(80, 24)
     $btnLSBrowse.BackColor = $clrLav
     $btnLSBrowse.ForeColor = $clrWhite
     $btnLSBrowse.FlatStyle = "Flat"
+    $btnLSBrowse.Anchor    = ([System.Windows.Forms.AnchorStyles]::Right -bor `
+                              [System.Windows.Forms.AnchorStyles]::Top)
     $pPers.Controls.Add($btnLSBrowse)
+    $btnLSBrowse.Add_Layout({
+        $txtLSSrc.Size = New-Object System.Drawing.Size(
+            ($btnLSBrowse.Left - $txtLSSrc.Left - 4), 22)
+    })
     $btnLSBrowse.Add_Click({
         $dlg = New-Object System.Windows.Forms.OpenFileDialog
         $dlg.Title            = "Select Lock Screen Image"
@@ -2134,22 +2163,33 @@ function Show-MainForm {
         $Parent.Controls.Add($lbl)
 
         $txt = New-Object System.Windows.Forms.TextBox
-        $txt.Text = $DefaultSource
+        $txt.Text     = $DefaultSource
         $txt.Location = New-Object System.Drawing.Point(148, $Y.Value)
-        $txt.Size = New-Object System.Drawing.Size(365, 22)
+        $txt.Size     = New-Object System.Drawing.Size(2000, 22)
+        $txt.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                          [System.Windows.Forms.AnchorStyles]::Right -bor `
+                          [System.Windows.Forms.AnchorStyles]::Top)
         $ttip.SetToolTip($txt, $SourceTip)
         $Parent.Controls.Add($txt)
 
         $btn = New-Object System.Windows.Forms.Button
-        $btn.Text = "Browse..."
-        $btn.Location = New-Object System.Drawing.Point(521, ($Y.Value - 1))
-        $btn.Size = New-Object System.Drawing.Size(80, 24)
+        $btn.Text     = "Browse..."
+        $btn.Location = New-Object System.Drawing.Point(148, ($Y.Value - 1))
+        $btn.Size     = New-Object System.Drawing.Size(80, 24)
         $btn.BackColor = $clrLav
         $btn.ForeColor = $clrWhite
         $btn.FlatStyle = "Flat"
-        $btn.Tag = $txt   # store textbox reference on the button itself to avoid closure scoping issues
+        $btn.Anchor    = ([System.Windows.Forms.AnchorStyles]::Right -bor `
+                           [System.Windows.Forms.AnchorStyles]::Top)
+        $btn.Tag = $txt
         $ttip.SetToolTip($btn, "Browse for a local installer file. You can also type or paste a URL directly into the text box.")
         $Parent.Controls.Add($btn)
+        # Keep textbox right edge clear of browse button
+        $btnRef = $btn; $txtRef2 = $txt
+        $btn.Add_Layout({
+            $txtRef2.Size = New-Object System.Drawing.Size(
+                ($btnRef.Left - $txtRef2.Left - 4), 22)
+        })
 
         # Use $this.Tag to retrieve the textbox - reliable across all PS closure contexts
         $btn.Add_Click({
@@ -2578,6 +2618,15 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.2   - Layout overhaul: section labels and checkboxes now use initial width
+#          of 2000px + Anchor Left+Right+Top instead of ClientSize.Width (which
+#          is 0 at tab creation time). Wallpaper, lockscreen, and management
+#          agent text fields now fill available width with Anchor Left+Right;
+#          browse buttons anchor Right and use Add_Layout to keep textbox clear.
+#          Log header replaced with TableLayoutPanel so Wrap checkbox reliably
+#          appears at right edge regardless of panel width. Minimum left panel
+#          width set to 30%% of form width (min 300px) in Add_Shown.
 #
 # v1.13  - Bug fix: WinForms docks controls in reverse add order. $split (Fill)
 #          was added last so it was docked first, consuming the entire form before
