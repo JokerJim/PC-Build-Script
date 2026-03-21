@@ -1357,6 +1357,7 @@ function Show-MainForm {
     $clrPaneBg  = [System.Drawing.ColorTranslator]::FromHtml("#f7f4fa")
     $clrWhite   = [System.Drawing.Color]::White
     $clrGray    = [System.Drawing.ColorTranslator]::FromHtml("#444444")
+    $clrDark    = [System.Drawing.ColorTranslator]::FromHtml("#1a1a1a")
     $clrWarn    = [System.Drawing.ColorTranslator]::FromHtml("#cc6600")
 
     $segUI  = New-Object System.Drawing.Font("Segoe UI", 9)
@@ -1404,6 +1405,9 @@ function Show-MainForm {
     $form.Controls.Add($pnlHeader)
     $form.Controls.Add($split)
 
+    # SplitterDistance must be set after the control is parented and sized
+    $form.Add_Load({ try { $split.SplitterDistance = $tabW } catch {} })
+
     $lblTitle              = New-Object System.Windows.Forms.Label
     $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool"
     $lblTitle.Font         = $segHdr
@@ -1424,11 +1428,11 @@ function Show-MainForm {
     $split                       = New-Object System.Windows.Forms.SplitContainer
     $split.Dock                  = "Fill"
     $split.SplitterWidth         = 6
-    $split.SplitterDistance      = $tabW
-    $split.BackColor             = $clrPurple   # splitter bar color
     $split.Panel1MinSize         = 400
     $split.Panel2MinSize         = 300
     $split.FixedPanel            = "None"
+    $split.BackColor             = $clrPurple   # splitter bar color
+    # SplitterDistance set after controls are added to avoid min-size validation errors
 
     # Left pane: tab control fills Panel1
     $tabs                  = New-Object System.Windows.Forms.TabControl
