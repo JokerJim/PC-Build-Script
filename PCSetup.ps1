@@ -1411,10 +1411,15 @@ function Show-MainForm {
         $script:splitCtrl.Panel1MinSize    = [Math]::Max($minLeft, 300)
         $script:splitCtrl.Panel2MinSize    = 200
         try { $script:splitCtrl.SplitterDistance = $script:splitTabW } catch {}
+        # Run initial layout pass on the first visible tab
+        $tp = $tabs.SelectedTab
+        if ($tp -and $tp.Controls.Count -gt 0) {
+            Update-TabLayout $tp.Controls[0]
+        }
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.3"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.4"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -1899,7 +1904,10 @@ function Show-MainForm {
     $cmbDNS = New-Object System.Windows.Forms.ComboBox
     $cmbDNS.DropDownStyle = "DropDownList"
     $cmbDNS.Location = New-Object System.Drawing.Point(16, $y3)
-    $cmbDNS.Size = New-Object System.Drawing.Size(350, 22)
+    $cmbDNS.Size   = New-Object System.Drawing.Size(350, 22)
+    $cmbDNS.Anchor = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                       [System.Windows.Forms.AnchorStyles]::Right -bor `
+                       [System.Windows.Forms.AnchorStyles]::Top)
     foreach ($key in $dnsProviders.Keys) { $cmbDNS.Items.Add($key) | Out-Null }
     $cmbDNS.SelectedIndex = 0
     $ttip.SetToolTip($cmbDNS, "Select DNS provider to apply to all active ethernet adapters. Only used if Set DNS Servers is checked above.")
@@ -1991,28 +1999,22 @@ function Show-MainForm {
     $lblWallSrc.AutoSize  = $true
     $lblWallSrc.ForeColor = $clrGray
     $pPers.Controls.Add($lblWallSrc)
-    # Wallpaper file row: container panel with Dock so resize works reliably
-    $pnlWallRow = New-Object System.Windows.Forms.Panel
-    $pnlWallRow.Location = New-Object System.Drawing.Point(120, $y4)
-    $pnlWallRow.Height   = 24
-    $pnlWallRow.Size     = New-Object System.Drawing.Size(2000, 24)
-    $pnlWallRow.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
-                             [System.Windows.Forms.AnchorStyles]::Right -bor `
-                             [System.Windows.Forms.AnchorStyles]::Top)
-    $pPers.Controls.Add($pnlWallRow)
     $btnWallBrowse = New-Object System.Windows.Forms.Button
     $btnWallBrowse.Text      = "Browse..."
-    $btnWallBrowse.Dock      = "Right"
     $btnWallBrowse.Size      = New-Object System.Drawing.Size(80, 24)
     $btnWallBrowse.BackColor = $clrLav
     $btnWallBrowse.ForeColor = $clrWhite
     $btnWallBrowse.FlatStyle = "Flat"
-    $pnlWallRow.Controls.Add($btnWallBrowse)
+    $pPers.Controls.Add($btnWallBrowse)
     $txtWallSrc = New-Object System.Windows.Forms.TextBox
     $txtWallSrc.Text     = "C:\Pirum\media\background.jpg"
-    $txtWallSrc.Dock     = "Fill"
+    $txtWallSrc.Location = New-Object System.Drawing.Point(120, $y4)
+    $txtWallSrc.Size     = New-Object System.Drawing.Size(100, 22)
+    $txtWallSrc.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                             [System.Windows.Forms.AnchorStyles]::Right -bor `
+                             [System.Windows.Forms.AnchorStyles]::Top)
     $ttip.SetToolTip($txtWallSrc, "Full path to the wallpaper image. JPG or PNG recommended. Use the Browse button to select.")
-    $pnlWallRow.Controls.Add($txtWallSrc)
+    $pPers.Controls.Add($txtWallSrc)
     $btnWallBrowse.Add_Click({
         $dlg = New-Object System.Windows.Forms.OpenFileDialog
         $dlg.Title            = "Select Wallpaper Image"
@@ -2032,28 +2034,22 @@ function Show-MainForm {
     $lblLSSrc.AutoSize  = $true
     $lblLSSrc.ForeColor = $clrGray
     $pPers.Controls.Add($lblLSSrc)
-    # Lockscreen file row: container panel with Dock
-    $pnlLSRow = New-Object System.Windows.Forms.Panel
-    $pnlLSRow.Location = New-Object System.Drawing.Point(120, $y4)
-    $pnlLSRow.Height   = 24
-    $pnlLSRow.Size     = New-Object System.Drawing.Size(2000, 24)
-    $pnlLSRow.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
-                           [System.Windows.Forms.AnchorStyles]::Right -bor `
-                           [System.Windows.Forms.AnchorStyles]::Top)
-    $pPers.Controls.Add($pnlLSRow)
     $btnLSBrowse = New-Object System.Windows.Forms.Button
     $btnLSBrowse.Text      = "Browse..."
-    $btnLSBrowse.Dock      = "Right"
     $btnLSBrowse.Size      = New-Object System.Drawing.Size(80, 24)
     $btnLSBrowse.BackColor = $clrLav
     $btnLSBrowse.ForeColor = $clrWhite
     $btnLSBrowse.FlatStyle = "Flat"
-    $pnlLSRow.Controls.Add($btnLSBrowse)
+    $pPers.Controls.Add($btnLSBrowse)
     $txtLSSrc = New-Object System.Windows.Forms.TextBox
     $txtLSSrc.Text     = "C:\Pirum\media\lockscreen.jpg"
-    $txtLSSrc.Dock     = "Fill"
+    $txtLSSrc.Location = New-Object System.Drawing.Point(120, $y4)
+    $txtLSSrc.Size     = New-Object System.Drawing.Size(100, 22)
+    $txtLSSrc.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                           [System.Windows.Forms.AnchorStyles]::Right -bor `
+                           [System.Windows.Forms.AnchorStyles]::Top)
     $ttip.SetToolTip($txtLSSrc, "Full path to the lock screen image. JPG or PNG recommended. Use the Browse button to select.")
-    $pnlLSRow.Controls.Add($txtLSSrc)
+    $pPers.Controls.Add($txtLSSrc)
     $btnLSBrowse.Add_Click({
         $dlg = New-Object System.Windows.Forms.OpenFileDialog
         $dlg.Title            = "Select Lock Screen Image"
@@ -2162,30 +2158,25 @@ function Show-MainForm {
         $lbl.ForeColor = $clrGray
         $Parent.Controls.Add($lbl)
 
-        # Container row panel: btn Dock=Right, txt Dock=Fill
-        $rowPnl = New-Object System.Windows.Forms.Panel
-        $rowPnl.Location = New-Object System.Drawing.Point(148, $Y.Value)
-        $rowPnl.Size     = New-Object System.Drawing.Size(2000, 24)
-        $rowPnl.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
-                             [System.Windows.Forms.AnchorStyles]::Right -bor `
-                             [System.Windows.Forms.AnchorStyles]::Top)
-        $Parent.Controls.Add($rowPnl)
-
         $btn = New-Object System.Windows.Forms.Button
         $btn.Text      = "Browse..."
-        $btn.Dock      = "Right"
         $btn.Size      = New-Object System.Drawing.Size(80, 24)
         $btn.BackColor = $clrLav
         $btn.ForeColor = $clrWhite
         $btn.FlatStyle = "Flat"
+        $btn.Tag       = $null  # set after txt is created
         $ttip.SetToolTip($btn, "Browse for a local installer file. You can also type or paste a URL directly into the text box.")
-        $rowPnl.Controls.Add($btn)
+        $Parent.Controls.Add($btn)
 
         $txt = New-Object System.Windows.Forms.TextBox
-        $txt.Text = $DefaultSource
-        $txt.Dock = "Fill"
+        $txt.Text     = $DefaultSource
+        $txt.Location = New-Object System.Drawing.Point(148, $Y.Value)
+        $txt.Size     = New-Object System.Drawing.Size(100, 22)
+        $txt.Anchor   = ([System.Windows.Forms.AnchorStyles]::Left -bor `
+                          [System.Windows.Forms.AnchorStyles]::Right -bor `
+                          [System.Windows.Forms.AnchorStyles]::Top)
         $ttip.SetToolTip($txt, $SourceTip)
-        $rowPnl.Controls.Add($txt)
+        $Parent.Controls.Add($txt)
         $btn.Tag = $txt
 
         # Use $this.Tag to retrieve the textbox - reliable across all PS closure contexts
@@ -2288,6 +2279,63 @@ function Show-MainForm {
     $lblStatus.AutoSize  = $true
     $lblStatus.Location  = New-Object System.Drawing.Point(454, 16)
     $pnlBottom.Controls.Add($lblStatus)
+
+    # ================================================================
+    # Resize helper: recalculate variable-width controls on a panel
+    # Called on tab selection and form resize so fields fill correctly.
+    # ================================================================
+    function Update-TabLayout {
+        param([System.Windows.Forms.Control]$Panel, [int]$BtnW = 80, [int]$BtnGap = 4)
+        $w = $Panel.ClientSize.Width
+        if ($w -lt 10) { return }  # panel not yet measured
+
+        foreach ($ctrl in $Panel.Controls) {
+            # Resize labels, textboxes, comboboxes that span to the right edge
+            if ($ctrl -is [System.Windows.Forms.Label] -or
+                $ctrl -is [System.Windows.Forms.TextBox] -or
+                $ctrl -is [System.Windows.Forms.ComboBox]) {
+                $a = $ctrl.Anchor
+                $hasLeft  = $a -band [System.Windows.Forms.AnchorStyles]::Left
+                $hasRight = $a -band [System.Windows.Forms.AnchorStyles]::Right
+                if ($hasLeft -and $hasRight) {
+                    $ctrl.Width = $w - $ctrl.Left - 8
+                }
+            }
+        }
+
+        # Second pass: position browse buttons and shrink their paired textbox
+        foreach ($ctrl in $Panel.Controls) {
+            if ($ctrl -is [System.Windows.Forms.Button] -and $ctrl.Tag -is [System.Windows.Forms.TextBox]) {
+                $txt  = $ctrl.Tag
+                $btnX = $w - $BtnW - 8
+                $ctrl.Location = New-Object System.Drawing.Point($btnX, $ctrl.Top)
+                $txt.Width     = $btnX - $txt.Left - $BtnGap
+            }
+        }
+
+        # Recurse into AutoScroll sub-panels (e.g. pPers inside tpPersonalize)
+        foreach ($child in $Panel.Controls) {
+            if ($child -is [System.Windows.Forms.Panel] -and $child.AutoScroll) {
+                Update-TabLayout $child $BtnW $BtnGap
+            }
+        }
+    }
+
+    # Wire resize to tab selection
+    $tabs.Add_SelectedIndexChanged({
+        $tp = $tabs.SelectedTab
+        if ($tp -and $tp.Controls.Count -gt 0) {
+            Update-TabLayout $tp.Controls[0]
+        }
+    })
+
+    # Also re-run on splitter move and form resize
+    $split.Add_SplitterMoved({
+        $tp = $tabs.SelectedTab
+        if ($tp -and $tp.Controls.Count -gt 0) {
+            Update-TabLayout $tp.Controls[0]
+        }
+    })
 
     # ================================================================
     # Event: custom install button
@@ -2615,6 +2663,17 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.4   - Replaced all container-panel and Add_Layout approaches with
+#          Update-TabLayout: a resize function that recalculates control
+#          widths and browse button positions based on panel ClientSize.
+#          Fires on tab selection, splitter move, and form shown.
+#          TextBox/ComboBox with Anchor Left+Right are stretched to fill
+#          the panel. Buttons with Tag pointing to a TextBox are placed
+#          at the right edge with the textbox shrunk to clear them.
+#          Browse button rows (wallpaper, lockscreen, management agents)
+#          restored to direct panel children with Anchor+Tag pattern.
+#          DNS dropdown and OEM textboxes also gain Anchor Left+Right.
 #
 # v1.3   - Window height increased by 100px (bodyH 618->718).
 #        - Left panel minimum width increased to 40%% of form width.
