@@ -1406,7 +1406,7 @@ function Show-MainForm {
     $form.Controls.Add($split)
 
     # SplitterDistance must be set after the control is parented and sized
-    $form.Add_Load({
+    $form.Add_Shown({
         $split.Panel1MinSize    = 400
         $split.Panel2MinSize    = 300
         try { $split.SplitterDistance = $tabW } catch {}
