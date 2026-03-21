@@ -1673,13 +1673,20 @@ function Show-MainForm {
 
     $y2 += 10
     $y2 = Add-SectionLabel $pApps "Microsoft 365 / Office" $y2
-    $cbInstallM365 = Add-CheckRow $pApps "Install Microsoft 365  (O365BusinessRetail, Monthly channel, en-us)" $true "Runs choco install microsoft-office-deployment with the O365BusinessRetail params below. This runs as a separate install pass and takes longer than standard apps." $y2; $y2 += 22
+    $lblM365Info = New-Object System.Windows.Forms.Label
+    $lblM365Info.Text      = "    Controlled by the Install Microsoft 365 checkbox on the Main Steps tab."
+    $lblM365Info.Font      = $segSm
+    $lblM365Info.ForeColor = $clrLav
+    $lblM365Info.AutoSize  = $true
+    $lblM365Info.Location  = New-Object System.Drawing.Point(16, $y2)
+    $pApps.Controls.Add($lblM365Info)
+    $y2 += 20
     $lblM365Cmd = New-Object System.Windows.Forms.Label
-    $lblM365Cmd.Text      = "    choco install microsoft-office-deployment --params=`"'/Channel:Monthly /Language:en-us /Product:O365BusinessRetail /Exclude:Lync,Groove'`" -y"
+    $lblM365Cmd.Text      = "    choco install microsoft-office-deployment --params=""'/Channel:Monthly /Language:en-us /Product:O365BusinessRetail /Exclude:Lync,Groove'"" -y"
     $lblM365Cmd.Font      = $segSm
     $lblM365Cmd.ForeColor = $clrLav
     $lblM365Cmd.AutoSize  = $true
-    $lblM365Cmd.Location  = New-Object System.Drawing.Point(32, $y2)
+    $lblM365Cmd.Location  = New-Object System.Drawing.Point(16, $y2)
     $pApps.Controls.Add($lblM365Cmd)
     $y2 += 30
 
