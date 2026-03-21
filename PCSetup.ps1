@@ -46,17 +46,25 @@ function Get-WinVersion {
 # ============================================================
 function Write-Log {
     param([string]$Text, [System.Drawing.Color]$Color = [System.Drawing.Color]::LightGreen)
-    if ($script:LogBox) {
-        $ts = Get-Date -Format "HH:mm:ss"
+    if (-not $script:LogBox) { return }
+    $ts       = Get-Date -Format "HH:mm:ss"
+    $colorHex = [string]::Format("#{0:X2}{1:X2}{2:X2}", $Color.R, $Color.G, $Color.B)
+    $action   = [System.Action]{
         $script:LogBox.SelectionStart  = $script:LogBox.TextLength
         $script:LogBox.SelectionLength = 0
         $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
         $script:LogBox.AppendText("[$ts] ")
         $script:LogBox.SelectionStart  = $script:LogBox.TextLength
         $script:LogBox.SelectionLength = 0
-        $script:LogBox.SelectionColor  = $Color
+        $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($colorHex)
         $script:LogBox.AppendText("$Text`n")
         $script:LogBox.ScrollToCaret()
+    }
+    # If we are on the UI thread, invoke directly; otherwise marshal via Invoke()
+    if ($script:LogBox.InvokeRequired) {
+        $script:LogBox.Invoke($action)
+    } else {
+        & $action
         [System.Windows.Forms.Application]::DoEvents()
     }
 }
@@ -1338,6 +1346,7 @@ function Show-MainForm {
 
     $osVer        = Get-WinVersion
     $reclaimItems = Get-ReclaimItems
+    $script:CancelRequested = $false
 
     # Brand colors
     $clrPurple  = [System.Drawing.ColorTranslator]::FromHtml("#582a72")
@@ -1366,18 +1375,29 @@ function Show-MainForm {
     # Header: static at (0,0), 62px tall.
     # Tabs:   static at (0,62), anchored all four sides.
     # Footer: anchored Bottom+Left+Right, floats at the bottom edge on resize.
+    # Layout constants
+    $tabW   = 724   # left tab panel width
+    $bodyH  = 618   # height of the tab+log area
+    $footH  = 50
+    $hdrH   = 62
+    $splitterW = 6
+    # Cap form width at 1600px or the available screen width, whichever is less
+    $screenW = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Width
+    $formW   = [Math]::Min(1600, $screenW)
+    $logW    = $formW - $tabW - $splitterW
+
     $form                  = New-Object System.Windows.Forms.Form
     $form.Text             = "Pirum Consulting LLC  -  PC Setup Tool  ($osVer detected)"
-    $form.ClientSize       = New-Object System.Drawing.Size(1060, 730)
-    $form.MinimumSize      = New-Object System.Drawing.Size(900, 600)
+    $form.ClientSize       = New-Object System.Drawing.Size($formW, ($hdrH + $bodyH + $footH))
+    $form.MinimumSize      = New-Object System.Drawing.Size(1000, 600)
     $form.StartPosition    = "CenterScreen"
     $form.BackColor        = $clrPaneBg
     $form.Font             = $segUI
 
-    # ---- Header: fixed position, no Dock ----
+    # ---- Header: full width ----
     $pnlHeader             = New-Object System.Windows.Forms.Panel
     $pnlHeader.Location    = New-Object System.Drawing.Point(0, 0)
-    $pnlHeader.Size        = New-Object System.Drawing.Size(1060, 62)
+    $pnlHeader.Size        = New-Object System.Drawing.Size($formW, $hdrH)
     $pnlHeader.Anchor      = ([System.Windows.Forms.AnchorStyles]::Top -bor `
                               [System.Windows.Forms.AnchorStyles]::Left -bor `
                               [System.Windows.Forms.AnchorStyles]::Right)
@@ -1400,22 +1420,96 @@ function Show-MainForm {
     $lblSub.Location       = New-Object System.Drawing.Point(14, 38)
     $pnlHeader.Controls.Add($lblSub)
 
-    # ---- Tab control: starts below header, anchored all sides ----
+    # ---- Tab control: left side, anchored Top/Bottom/Left ----
     $tabs                  = New-Object System.Windows.Forms.TabControl
-    $tabs.Location         = New-Object System.Drawing.Point(0, 62)
-    $tabs.Size             = New-Object System.Drawing.Size(1060, 618)
+    $tabs.Location         = New-Object System.Drawing.Point(0, $hdrH)
+    $tabs.Size             = New-Object System.Drawing.Size($tabW, $bodyH)
     $tabs.Anchor           = ([System.Windows.Forms.AnchorStyles]::Top    -bor `
                               [System.Windows.Forms.AnchorStyles]::Bottom -bor `
-                              [System.Windows.Forms.AnchorStyles]::Left   -bor `
-                              [System.Windows.Forms.AnchorStyles]::Right)
+                              [System.Windows.Forms.AnchorStyles]::Left)
     $tabs.Font             = $segUI
     $tabs.Padding          = New-Object System.Drawing.Point(10, 4)
     $form.Controls.Add($tabs)
 
-    # ---- Footer: anchored to bottom edge, floats correctly on resize ----
+    # ---- Splitter between tabs and log panel ----
+    $splitter              = New-Object System.Windows.Forms.Splitter
+    $splitter.Location     = New-Object System.Drawing.Point($tabW, $hdrH)
+    $splitter.Size         = New-Object System.Drawing.Size(6, $bodyH)
+    $splitter.Anchor       = ([System.Windows.Forms.AnchorStyles]::Top -bor `
+                              [System.Windows.Forms.AnchorStyles]::Bottom -bor `
+                              [System.Windows.Forms.AnchorStyles]::Left)
+    $splitter.BackColor    = $clrPurple
+    $form.Controls.Add($splitter)
+
+    # ---- Log panel: right side, anchored all four sides ----
+    $logPanelX             = $tabW + 6
+    $pnlLog                = New-Object System.Windows.Forms.Panel
+    $pnlLog.Location       = New-Object System.Drawing.Point($logPanelX, $hdrH)
+    $pnlLog.Size           = New-Object System.Drawing.Size($logW, $bodyH)
+    $pnlLog.Anchor         = ([System.Windows.Forms.AnchorStyles]::Top    -bor `
+                              [System.Windows.Forms.AnchorStyles]::Bottom -bor `
+                              [System.Windows.Forms.AnchorStyles]::Left   -bor `
+                              [System.Windows.Forms.AnchorStyles]::Right)
+    $pnlLog.BackColor      = $clrDarkBg
+    $form.Controls.Add($pnlLog)
+
+    # Log panel header bar (purple, same height as section labels)
+    $pnlLogHdr             = New-Object System.Windows.Forms.Panel
+    $pnlLogHdr.Location    = New-Object System.Drawing.Point(0, 0)
+    $pnlLogHdr.Size        = New-Object System.Drawing.Size($logW, 22)
+    $pnlLogHdr.Anchor      = ([System.Windows.Forms.AnchorStyles]::Top -bor `
+                              [System.Windows.Forms.AnchorStyles]::Left -bor `
+                              [System.Windows.Forms.AnchorStyles]::Right)
+    $pnlLogHdr.BackColor   = $clrPurple
+    $pnlLog.Controls.Add($pnlLogHdr)
+
+    $lblLogHdr             = New-Object System.Windows.Forms.Label
+    $lblLogHdr.Text        = "  Run Log"
+    $lblLogHdr.Font        = $segB
+    $lblLogHdr.ForeColor   = $clrWhite
+    $lblLogHdr.BackColor   = $clrPurple
+    $lblLogHdr.AutoSize    = $true
+    $lblLogHdr.Location    = New-Object System.Drawing.Point(0, 3)
+    $pnlLogHdr.Controls.Add($lblLogHdr)
+
+    # Word wrap toggle checkbox in the log header
+    $cbLogWrap             = New-Object System.Windows.Forms.CheckBox
+    $cbLogWrap.Text        = "Wrap"
+    $cbLogWrap.Checked     = $false
+    $cbLogWrap.ForeColor   = $clrGold
+    $cbLogWrap.BackColor   = $clrPurple
+    $cbLogWrap.Font        = $segSm
+    $cbLogWrap.AutoSize    = $true
+    $cbLogWrap.Location    = New-Object System.Drawing.Point(($logW - 58), 3)
+    $cbLogWrap.Anchor      = ([System.Windows.Forms.AnchorStyles]::Top -bor `
+                              [System.Windows.Forms.AnchorStyles]::Right)
+    $pnlLogHdr.Controls.Add($cbLogWrap)
+
+    $script:LogBox         = New-Object System.Windows.Forms.RichTextBox
+    $script:LogBox.Location = New-Object System.Drawing.Point(0, 22)
+    $script:LogBox.Size    = New-Object System.Drawing.Size($logW, ($bodyH - 22))
+    $script:LogBox.Anchor  = ([System.Windows.Forms.AnchorStyles]::Top    -bor `
+                              [System.Windows.Forms.AnchorStyles]::Bottom -bor `
+                              [System.Windows.Forms.AnchorStyles]::Left   -bor `
+                              [System.Windows.Forms.AnchorStyles]::Right)
+    $script:LogBox.BackColor  = $clrDarkBg
+    $script:LogBox.ForeColor  = [System.Drawing.ColorTranslator]::FromHtml("#b0f080")
+    $script:LogBox.Font       = New-Object System.Drawing.Font("Consolas", 8)
+    $script:LogBox.ReadOnly   = $true
+    $script:LogBox.ScrollBars = "Both"
+    $script:LogBox.WordWrap   = $false
+    $pnlLog.Controls.Add($script:LogBox)
+
+    # Wire wrap toggle
+    $cbLogWrap.Add_CheckedChanged({
+        $script:LogBox.WordWrap   = $cbLogWrap.Checked
+        $script:LogBox.ScrollBars = if ($cbLogWrap.Checked) { "Vertical" } else { "Both" }
+    })
+
+    # ---- Footer: full width, anchored to bottom ----
     $pnlBottom           = New-Object System.Windows.Forms.Panel
-    $pnlBottom.Location  = New-Object System.Drawing.Point(0, 680)
-    $pnlBottom.Size      = New-Object System.Drawing.Size(1060, 50)
+    $pnlBottom.Location  = New-Object System.Drawing.Point(0, ($hdrH + $bodyH))
+    $pnlBottom.Size      = New-Object System.Drawing.Size($formW, $footH)
     $pnlBottom.Anchor    = ([System.Windows.Forms.AnchorStyles]::Bottom -bor `
                             [System.Windows.Forms.AnchorStyles]::Left   -bor `
                             [System.Windows.Forms.AnchorStyles]::Right)
@@ -2113,19 +2207,6 @@ function Show-MainForm {
     $lblMgmtNote.Location = New-Object System.Drawing.Point(16, ($y5 + 8))
     $pMgmt.Controls.Add($lblMgmtNote)
 
-    # ================================================================
-    # TAB 6: Log Output
-    # ================================================================
-    $tpLog = New-TabPage "  7. Log  "
-
-    $script:LogBox = New-Object System.Windows.Forms.RichTextBox
-    $script:LogBox.Dock        = "Fill"
-    $script:LogBox.BackColor   = $clrDarkBg
-    $script:LogBox.ForeColor   = [System.Drawing.ColorTranslator]::FromHtml("#b0f080")
-    $script:LogBox.Font        = New-Object System.Drawing.Font("Consolas", 9)
-    $script:LogBox.ReadOnly    = $true
-    $script:LogBox.ScrollBars  = "Vertical"
-    $tpLog.Controls.Add($script:LogBox)
 
     # ================================================================
     # ---- Bottom action bar: populate buttons (panel created above) ----
@@ -2186,7 +2267,6 @@ function Show-MainForm {
             [System.Windows.Forms.MessageBox]::Show("Enter a Chocolatey package ID first.", "Missing Input", "OK", "Warning") | Out-Null
             return
         }
-        $tabs.SelectedTab = $tpLog
         Invoke-InstallCustomApp -ChocoID $id
     })
 
@@ -2202,15 +2282,27 @@ function Show-MainForm {
     })
 
     $btnRun.Add_Click({
-        $btnRun.Enabled  = $false
-        $lblStatus.Text  = "Running..."
-        $tabs.SelectedTab = $tpLog
+        # If already running, act as Cancel
+        if ($script:CancelRequested -eq $false -and $btnRun.Text -eq "CANCEL") {
+            $script:CancelRequested = $true
+            $btnRun.Enabled = $false
+            $lblStatus.Text = "Cancelling - waiting for current step to finish..."
+            return
+        }
+
+        # Normal start
+        $script:CancelRequested = $false
+        $btnRun.Text      = "CANCEL"
+        $btnRun.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#722a44")
+        $lblStatus.Text   = "Running... (click CANCEL to stop after current step)"
         $script:LogBox.Clear()
+
         Write-Log "=================================================="
         Write-Log " Pirum Consulting LLC - PC Setup Tool"
         Write-Log " $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')   OS: $(Get-WinVersion)   Host: $env:COMPUTERNAME"
         Write-Log "=================================================="
 
+        # Snapshot all UI state into a plain hashtable before leaving the UI thread
         $run = @{
             SetName       = $cbSetName.Checked
             SetTime       = $cbSetTime.Checked
@@ -2252,125 +2344,207 @@ function Show-MainForm {
             ReclaimKeys   = @($reclaimCBs.GetEnumerator() | Where-Object { $_.Value.Checked } | ForEach-Object { $_.Key })
         }
 
-        try {
-            # 1. Set PC Name
-            if ($run.SetName) {
-                Invoke-SetPCName -DeviceType $run.DeviceType -Company $run.Company `
-                                 -Location $run.Location -AssetID $run.AssetID
+        # ── Build a runspace with access to all functions and script-scope state ──
+        $rs = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
+        $rs.ApartmentState = "STA"
+        $rs.ThreadOptions  = "ReuseThread"
+        $rs.Open()
+
+        # Share script-scope objects with the runspace via session variables
+        $rs.SessionStateProxy.SetVariable("run",                $run)
+        $rs.SessionStateProxy.SetVariable("script_LogBox",      $script:LogBox)
+        $rs.SessionStateProxy.SetVariable("usTimeZones",        $usTimeZones)
+        $rs.SessionStateProxy.SetVariable("reclaimItems",       $reclaimItems)
+        $rs.SessionStateProxy.SetVariable("script_CancelRef",   ([ref]$script:CancelRequested))
+
+        # Collect all function definitions to inject into the runspace
+        $fnNames = @(
+            "Write-Log","Write-ChocoLog","Ensure-RegPath","Get-WinVersion",
+            "Invoke-SetPCName","Invoke-SetTimeZone","Invoke-InstallChoco",
+            "Invoke-InstallApps","Invoke-InstallM365","Invoke-InstallCustomApp",
+            "Invoke-SetPowerProfile","Invoke-LayoutDesign","Invoke-JoinDomain",
+            "Invoke-AddDefenderExclusion","Invoke-CreateRestorePoint",
+            "Invoke-LogSecurityHardwareStatus","Invoke-EnableBitLocker",
+            "Invoke-ApplyAppAssociations","Invoke-ApplyLayoutModification",
+            "Invoke-InstallManagementSoftware","Resolve-Installer",
+            "Get-InstallerExtension","Invoke-Personalize"
+        )
+        $fnDefs = foreach ($name in $fnNames) {
+            $fn = Get-Item "function:$name" -ErrorAction SilentlyContinue
+            if ($fn) { "function $name {`n$($fn.ScriptBlock)`n}" }
+        }
+
+        $ps = [System.Management.Automation.PowerShell]::Create()
+        $ps.Runspace = $rs
+
+        $ps.AddScript({
+            # Restore shared references inside the runspace
+            $script:LogBox      = $script_LogBox
+            $script:SelectedDNS = $run.SelDNS
+            # Helper: returns $true if cancel was requested from the UI thread
+            function Test-Cancel {
+                if ($script_CancelRef.Value) {
+                    Write-Log "--- Run cancelled by user. ---" ([System.Drawing.Color]::Yellow)
+                    return $true
+                }
+                return $false
             }
-            # 2. Set Time Zone
-            if ($run.SetTime) {
-                $tzId = $usTimeZones[$run.TZIndex]
-                if (-not $tzId) { $tzId = "Eastern Standard Time" }
-                Invoke-SetTimeZone -TimeZoneId $tzId
+        }) | Out-Null
+
+        # Inject all function definitions
+        foreach ($def in $fnDefs) {
+            $ps.AddScript($def) | Out-Null
+        }
+
+        # Add the main work script
+        $ps.AddScript({
+            try {
+                if ($run.SetName) {
+                    Invoke-SetPCName -DeviceType $run.DeviceType -Company $run.Company `
+                                     -Location $run.Location -AssetID $run.AssetID
+                }
+                if (Test-Cancel) { return }
+                if ($run.SetTime) {
+                    $tzId = $usTimeZones[$run.TZIndex]
+                    if (-not $tzId) { $tzId = "Eastern Standard Time" }
+                    Invoke-SetTimeZone -TimeZoneId $tzId
+                }
+                if ($run.Power)        { Invoke-SetPowerProfile }
+                if ($run.DefenderExcl) { Invoke-AddDefenderExclusion }
+                if ($run.InstallChoco -or $run.InstallApps) { Invoke-InstallChoco }
+                if (Test-Cancel) { return }
+                if ($run.InstallApps -and $run.SelApps.Count -gt 0) {
+                    Write-Log ">>> Installing baseline applications..."
+                    Invoke-InstallApps -SelectedIDs $run.SelApps
+                }
+                if ($run.InstallApps -and ($run.SelApps -contains "microsoft-office-deployment")) { Invoke-InstallM365 }
+                if (Test-Cancel) { return }
+                if ($run.Reclaim) {
+                    Write-Log ">>> Running Reclaim Windows tweaks..."
+                    $script:SelectedDNS = $run.SelDNS
+                    foreach ($item in $reclaimItems) {
+                        if ($run.ReclaimKeys -contains $item.Key) {
+                            Write-Log "    Applying: $($item.Label)"
+                            try { & $item.Action }
+                            catch { Write-Log "    ERROR: $_" ([System.Drawing.Color]::Red) }
+                        }
+                    }
+                    Write-Log "    Reclaim Windows complete."
+                }
+                if (Test-Cancel) { return }
+                if ($run.Layout) { Invoke-LayoutDesign }
+                if ($run.Personalize) {
+                    Write-Log ">>> Applying personalization..."
+                    Invoke-Personalize `
+                        -DoOEM $run.OEM -OEMSetManufacturer $run.OEMSetMfr -OEMManufacturer $run.OEMMfr `
+                        -OEMSetPhone $run.OEMSetPhone -OEMPhone $run.OEMPhone `
+                        -OEMSetHours $run.OEMSetHours -OEMHours $run.OEMHours `
+                        -OEMSetURL $run.OEMSetURL -OEMURL $run.OEMURL `
+                        -DoWallpaper $run.Wallpaper -WallpaperSrc $run.WallSrc `
+                        -DoLockscreen $run.Lockscreen -LockscreenSrc $run.LSSrc `
+                        -DoUserPictures $run.UserPics -DoReset $run.ResetPers
+                }
+                if ($run.Layout -and $run.AppAssoc) {
+                    Invoke-ApplyAppAssociations -XmlPath "C:\Pirum\xml\AppAssociations.xml"
+                }
+                if ($run.Layout -and $run.LayoutMod) {
+                    Invoke-ApplyLayoutModification -XmlBasePath "C:\Pirum\xml"
+                }
+                if (Test-Cancel) { return }
+                if ($run.Mgmt) {
+                    Write-Log ">>> Installing management software..."
+                    Invoke-InstallManagementSoftware `
+                        -DoNinja $run.Ninja -NinjaSource $run.NinjaSrc `
+                        -DoAction1 $run.Action1 -Action1Source $run.Action1Src `
+                        -DoIHC $run.IHC -IHCSource $run.IHCSrc
+                }
+                if ($run.SystemRestore) { Invoke-CreateRestorePoint }
+                if ($run.TPMReport)     { Invoke-LogSecurityHardwareStatus }
+                if ($run.BitLocker) {
+                    $pendingName = ""
+                    if ($run.SetName -and $run.Company -and $run.Location -and $run.DeviceType -and $run.AssetID) {
+                        $pendingName = "$($run.Company)-$($run.Location)-$($run.DeviceType)-$($run.AssetID)"
+                    }
+                    Invoke-EnableBitLocker -PendingHostname $pendingName
+                }
+                if ($run.Domain) { Invoke-JoinDomain }
+
+                Write-Log ""
+                Write-Log "=================================================="
+                Write-Log " All selected steps complete."
+                Write-Log "=================================================="
+            } catch {
+                Write-Log "CRITICAL ERROR: $_" ([System.Drawing.Color]::Red)
             }
-            # 3. Power Profile
-            if ($run.Power) { Invoke-SetPowerProfile }
-            # 3b. Defender exclusion
-            if ($run.DefenderExcl) { Invoke-AddDefenderExclusion }
-            # 4. Chocolatey
-            if ($run.InstallChoco -or $run.InstallApps) { Invoke-InstallChoco }
-            # 5. Install Apps
-            if ($run.InstallApps -and $run.SelApps.Count -gt 0) {
-                Write-Log ">>> Installing baseline applications..."
-                Invoke-InstallApps -SelectedIDs $run.SelApps
-            }
-            # 5b. Install Microsoft 365 (if checked on Applications tab)
-            if ($run.InstallApps -and ($run.SelApps -contains "microsoft-office-deployment")) { Invoke-InstallM365 }
-            # 6. Reclaim Windows
-            if ($run.Reclaim) {
-                Write-Log ">>> Running Reclaim Windows tweaks..."
-                $script:SelectedDNS = $run.SelDNS
-                foreach ($item in $reclaimItems) {
-                    if ($run.ReclaimKeys -contains $item.Key) {
-                        Write-Log "    Applying: $($item.Label)"
-                        try { & $item.Action }
-                        catch { Write-Log "    ERROR: $_" ([System.Drawing.Color]::Red) }
+        }) | Out-Null
+
+        # Begin async execution
+        $asyncResult = $ps.BeginInvoke()
+
+        # ── Timer polls every 500ms on the UI thread to check completion ──
+        $timer = New-Object System.Windows.Forms.Timer
+        $timer.Interval = 500
+
+        # Capture needed references for the timer closure
+        $timerPs     = $ps
+        $timerRs     = $rs
+        $timerAsync  = $asyncResult
+        $timerRun    = $run
+        $timerBtn    = $btnRun
+        $timerStatus = $lblStatus
+        $timerForm   = $form
+
+        $timer.Add_Tick({
+            if ($timerAsync.IsCompleted) {
+                $timer.Stop()
+                $timer.Dispose()
+
+                # Collect any terminating errors from the runspace
+                if ($timerPs.HadErrors) {
+                    $timerPs.Streams.Error | ForEach-Object {
+                        Write-Log "    Runspace error: $_" ([System.Drawing.Color]::Red)
                     }
                 }
-                Write-Log "    Reclaim Windows complete."
-            }
-            # 7. Layout Design (gated: Layout main checkbox)
-            if ($run.Layout) { Invoke-LayoutDesign }
-            # 8. Personalize (gated: Personalize main checkbox)
-            if ($run.Personalize) {
-                Write-Log ">>> Applying personalization..."
-                Invoke-Personalize `
-                    -DoOEM $run.OEM -OEMSetManufacturer $run.OEMSetMfr -OEMManufacturer $run.OEMMfr `
-                    -OEMSetPhone $run.OEMSetPhone -OEMPhone $run.OEMPhone `
-                    -OEMSetHours $run.OEMSetHours -OEMHours $run.OEMHours `
-                    -OEMSetURL $run.OEMSetURL -OEMURL $run.OEMURL `
-                    -DoWallpaper $run.Wallpaper -WallpaperSrc $run.WallSrc `
-                    -DoLockscreen $run.Lockscreen -LockscreenSrc $run.LSSrc `
-                    -DoUserPictures $run.UserPics -DoReset $run.ResetPers
-            }
-            # 8b. App Associations (gated: Layout main checkbox)
-            if ($run.Layout -and $run.AppAssoc) {
-                Invoke-ApplyAppAssociations -XmlPath "C:\Pirum\xml\AppAssociations.xml"
-            }
-            # 8c. Layout Modification XML (gated: Layout main checkbox)
-            if ($run.Layout -and $run.LayoutMod) {
-                Invoke-ApplyLayoutModification -XmlBasePath "C:\Pirum\xml"
-            }
-            # 9. Management Software (gated: Mgmt main checkbox)
-            if ($run.Mgmt) {
-                Write-Log ">>> Installing management software..."
-                Invoke-InstallManagementSoftware `
-                    -DoNinja $run.Ninja -NinjaSource $run.NinjaSrc `
-                    -DoAction1 $run.Action1 -Action1Source $run.Action1Src `
-                    -DoIHC $run.IHC -IHCSource $run.IHCSrc
-            }
-            # 9b. System Restore Point
-            if ($run.SystemRestore) { Invoke-CreateRestorePoint }
-            # 9c. TPM and Secure Boot log
-            if ($run.TPMReport) { Invoke-LogSecurityHardwareStatus }
-            # 9d. BitLocker
-            if ($run.BitLocker) {
-                # If a rename was scheduled, pass the intended name so the key file
-                # uses the correct hostname rather than the pre-reboot name
-                $pendingName = ""
-                if ($run.SetName -and $run.Company -and $run.Location -and $run.DeviceType -and $run.AssetID) {
-                    $pendingName = "$($run.Company)-$($run.Location)-$($run.DeviceType)-$($run.AssetID)"
+                $timerPs.EndInvoke($timerAsync) | Out-Null
+                $timerPs.Dispose()
+                $timerRs.Close()
+                $timerRs.Dispose()
+
+                $wasCancelled = $script:CancelRequested
+                $script:CancelRequested = $false
+                $timerBtn.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#44722a")
+                $timerBtn.Enabled   = $true
+                $timerBtn.Text      = "RUN SELECTED STEPS"
+                $timerStatus.Text   = if ($wasCancelled) { "Run cancelled." } else { "All steps complete." }
+
+                # Auto-save and restart only run on clean completion, not cancel
+                if (-not $script:CancelRequested -and $timerRun.AutoSaveLog) {
+                    if (-not (Test-Path "C:\Pirum")) { New-Item "C:\Pirum" -ItemType Directory -Force | Out-Null }
+                    $ts2 = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+                    $lp  = "C:\Pirum\PCSetup_Log_$ts2.txt"
+                    try {
+                        $script:LogBox.Text | Out-File -FilePath $lp -Encoding UTF8 -Force
+                        $timerStatus.Text = "Complete. Log saved: $lp"
+                    } catch {
+                        Write-Log "    Could not auto-save log: $_" ([System.Drawing.Color]::Yellow)
+                    }
                 }
-                Invoke-EnableBitLocker -PendingHostname $pendingName
+
+                # Restart prompt
+                if (-not $script:CancelRequested -and $timerRun.Restart) {
+                    $res = [System.Windows.Forms.MessageBox]::Show(
+                        "All selected steps are complete.`n`nRestart the computer now?",
+                        "Restart",
+                        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                        [System.Windows.Forms.MessageBoxIcon]::Question)
+                    if ($res -eq "Yes") { Restart-Computer -Force }
+                }
             }
-            # 10. Join Domain
-            if ($run.Domain) { Invoke-JoinDomain }
+        })
 
-            Write-Log ""
-            Write-Log "=================================================="
-            Write-Log " All selected steps complete."
-            Write-Log "=================================================="
-            $lblStatus.Text = "All steps complete."
-
-        } catch {
-            Write-Log "CRITICAL ERROR: $_" ([System.Drawing.Color]::Red)
-            $lblStatus.Text = "Error encountered. See log."
-        }
-
-        $btnRun.Enabled = $true
-
-        # Auto-save log
-        if ($run.AutoSaveLog) {
-            if (-not (Test-Path "C:\Pirum")) { New-Item "C:\Pirum" -ItemType Directory -Force | Out-Null }
-            $ts2 = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-            $lp  = "C:\Pirum\PCSetup_Log_$ts2.txt"
-            try {
-                $script:LogBox.Text | Out-File -FilePath $lp -Encoding UTF8 -Force
-                $lblStatus.Text = "Complete. Log saved: $lp"
-            } catch { Write-Log "    Could not auto-save log: $_" ([System.Drawing.Color]::Yellow) }
-        }
-
-        # Restart prompt
-        if ($run.Restart) {
-            $res = [System.Windows.Forms.MessageBox]::Show(
-                "All selected steps are complete.`n`nRestart the computer now?",
-                "Restart",
-                [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                [System.Windows.Forms.MessageBoxIcon]::Question)
-            if ($res -eq "Yes") { Restart-Computer -Force }
-        }
+        $timer.Start()
     })
+
 
     $btnExit.Add_Click({ $form.Close() })
 
