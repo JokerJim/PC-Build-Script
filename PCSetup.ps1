@@ -47,6 +47,11 @@ function Get-WinVersion {
 function Write-Log {
     param([string]$Text, [System.Drawing.Color]$Color = [System.Drawing.Color]::LightGreen)
     if ($script:LogBox) {
+        $ts = Get-Date -Format "HH:mm:ss"
+        $script:LogBox.SelectionStart  = $script:LogBox.TextLength
+        $script:LogBox.SelectionLength = 0
+        $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
+        $script:LogBox.AppendText("[$ts] ")
         $script:LogBox.SelectionStart  = $script:LogBox.TextLength
         $script:LogBox.SelectionLength = 0
         $script:LogBox.SelectionColor  = $Color
@@ -210,6 +215,11 @@ function Invoke-AddDefenderExclusion {
         Write-Log "    Path not found on Utilities drive: $excludePath. Skipping." ([System.Drawing.Color]::Yellow)
         return
     }
+    $existing = (Get-MpPreference).ExclusionPath
+    if ($existing -contains $excludePath) {
+        Write-Log "    Exclusion already exists: $excludePath. Skipping." ([System.Drawing.Color]::Yellow)
+        return
+    }
     try {
         Add-MpPreference -ExclusionPath $excludePath -ErrorAction Stop
         Write-Log "    Defender exclusion added: $excludePath"
@@ -286,6 +296,7 @@ function Invoke-LogSecurityHardwareStatus {
 # SECTION: BitLocker Encryption
 # ============================================================
 function Invoke-EnableBitLocker {
+    param([string]$PendingHostname = "")
     Write-Log ">>> Enabling BitLocker on C: drive..."
 
     # Find the CustData drive by volume label
@@ -336,7 +347,15 @@ function Invoke-EnableBitLocker {
         if ($existingRecovery) {
             $recoveryPassword = $existingRecovery.RecoveryPassword
             $keyID            = $existingRecovery.KeyProtectorId.Trim("{}")
-            $hostname         = $env:COMPUTERNAME
+
+            # Use the pending hostname if a rename is scheduled, otherwise current name.
+            # This ensures the filename matches the computer name after the required reboot.
+            $hostname = if (-not [string]::IsNullOrWhiteSpace($PendingHostname)) {
+                Write-Log "    Using pending hostname for key filename: $PendingHostname" ([System.Drawing.Color]::Cyan)
+                $PendingHostname
+            } else {
+                $env:COMPUTERNAME
+            }
 
             # Filename matches the Windows default format, prefixed with hostname
             $keyFileName = "$hostname-BitLocker Recovery Key $keyID.TXT"
@@ -1374,7 +1393,7 @@ function Show-MainForm {
     $pnlHeader.Controls.Add($lblTitle)
 
     $lblSub                = New-Object System.Windows.Forms.Label
-    $lblSub.Text           = "Veteran Owned & Operated  |  330-597-0550  |  pirumllc.com  |  OS: $osVer"
+    $lblSub.Text           = "Veteran Owned & Operated  |  330-597-0550  |  pirumllc.com  |  OS: $osVer  |  Host: $env:COMPUTERNAME"
     $lblSub.Font           = $segSm
     $lblSub.ForeColor      = $clrGold
     $lblSub.AutoSize       = $true
@@ -1450,7 +1469,7 @@ function Show-MainForm {
     $y = 8
 
     $y = Add-SectionLabel $pMain "Core Setup" $y
-    $cbSetName = Add-CheckRow $pMain "Set PC Name  (uses values from PC Naming tab)" $true "Renames the computer. Fill in the PC Naming tab first." $y; $y += 22
+    $cbSetName    = Add-CheckRow $pMain "Set PC Name  (uses values from PC Naming tab)" $true "Renames the computer. Fill in the PC Naming tab first." $y; $y += 22
 
     # Time zone row: checkbox + inline dropdown
     $cbSetTime = New-Object System.Windows.Forms.CheckBox
@@ -1486,38 +1505,43 @@ function Show-MainForm {
         "Atlantic Standard Time"     = "Atlantic  (AT)  - Puerto Rico, Virgin Islands"
     }
     foreach ($tzId in $usTimeZones) { $cmbTimeZone.Items.Add($usTZLabels[$tzId]) | Out-Null }
-    $cmbTimeZone.SelectedIndex = 0   # Eastern default
+    $cmbTimeZone.SelectedIndex = 0
     $ttip.SetToolTip($cmbTimeZone, "Select the time zone for this machine.")
     $pMain.Controls.Add($cmbTimeZone)
     $y += 26
 
-    $cbPower = Add-CheckRow $pMain "Apply Pirum Power Profile  (no sleep on AC, managed DC timeouts)" $true "Creates a custom power scheme. On AC power the machine never sleeps. DC standby at 30 min." $y; $y += 26
+    $cbPower         = Add-CheckRow $pMain "Apply Pirum Power Profile  (no sleep on AC, high-perf CPU)" $true "Creates a custom power scheme with high-performance CPU settings." $y; $y += 22
+    $cbDefenderExcl  = Add-CheckRow $pMain "Add Defender Exclusion  (Utilities USB: _Collections\_TechToolStore)" $true "Finds the Utilities USB drive by label and adds the tech tools folder to Defender exclusions. Skipped if drive not connected or exclusion already exists." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "Applications" $y
-    $cbInstallChoco = Add-CheckRow $pMain "Install Chocolatey  (required before any app installs)" $true "Installs the Chocolatey package manager. Automatically skipped if already installed." $y; $y += 22
-    $cbInstallApps  = Add-CheckRow $pMain "Install Applications  (configure on the Applications tab)" $true "Installs all checked apps from the Applications tab." $y; $y += 26
+    $cbInstallChoco  = Add-CheckRow $pMain "Install Chocolatey  (required before any app installs)" $true "Installs the Chocolatey package manager. Skipped if already installed." $y; $y += 22
+    $cbInstallApps   = Add-CheckRow $pMain "Install Applications  (configure on the Applications tab)" $true "Installs all checked apps from the Applications tab. Requires Chocolatey." $y; $y += 22
+    $cbInstallM365   = Add-CheckRow $pMain "Install Microsoft 365  (O365BusinessRetail, Monthly channel)" $true "Runs the dedicated M365 choco install command. Requires Chocolatey." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "System Hardening" $y
-    $cbReclaim = Add-CheckRow $pMain "Run Reclaim Windows  (configure on the Reclaim Windows tab)" $true "Runs all checked privacy, system, UI, and bloatware items from the Reclaim Windows tab." $y; $y += 26
+    $cbReclaim       = Add-CheckRow $pMain "Run Reclaim Windows  (configure on the Reclaim Windows tab)" $true "Runs all checked privacy, system, UI, and bloatware items from the Reclaim tab." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "Layout & Personalization" $y
-    $cbLayout      = Add-CheckRow $pMain "Apply Layout Design  (taskbar/start menu for new user profiles)"  $true "Applies LayoutModification XML and AppAssociations XML from C:\Pirum\xml\. Delegates to the same functions as the Personalize tab." $y; $y += 22
-    $cbPersonalize = Add-CheckRow $pMain "Apply Personalization  (configure on the Personalize tab)"        $true "Applies OEM branding, wallpaper, lock screen, and user pictures per selections on the Personalize tab." $y; $y += 26
+    $cbLayout        = Add-CheckRow $pMain "Apply Layout Design  (XML files from C:\Pirum\xml\)" $true "Applies LayoutModification and AppAssociations XML. Sub-options on Personalize tab only run when this is checked." $y; $y += 22
+    $cbPersonalize   = Add-CheckRow $pMain "Apply Personalization  (configure on the Personalize tab)" $true "Applies OEM branding, wallpaper, lock screen, and user pictures. Sub-options only run when this is checked." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "Management Software" $y
-    $cbMgmt = Add-CheckRow $pMain "Install Management Software  (configure on the Management tab)" $true "Installs selected RMM agents and remote support tools." $y; $y += 26
+    $cbMgmt          = Add-CheckRow $pMain "Install Management Software  (configure on the Management tab)" $true "Installs selected RMM agents and remote support tools." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "Domain" $y
-    $cbDomain = Add-CheckRow $pMain "Join Domain  (will prompt for domain name and credentials)" $false "Prompts for domain name and optional OU path, then joins the machine to the domain." $y; $y += 26
+    $cbDomain        = Add-CheckRow $pMain "Join Domain  (will prompt for domain name and credentials)" $false "Prompts for domain name and optional OU path, then joins the machine to the domain." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "Security" $y
-    $cbBitLocker = Add-CheckRow $pMain "Enable BitLocker on C:  (requires CustData USB drive connected)" $true "Enables BitLocker with TPM protector and saves the recovery key to the \BitLocker folder on the CustData USB drive. Drive must be connected before clicking Run." $y; $y += 26
+    $cbBitLocker     = Add-CheckRow $pMain "Enable BitLocker on C:  (requires CustData USB drive connected)" $true "Enables BitLocker with TPM protector and saves recovery key to \BitLocker on the CustData USB drive." $y; $y += 22
+    $cbSystemRestore = Add-CheckRow $pMain "Create System Restore Point  (Initial Provisioning)" $true "Enables System Restore on C: and creates a named restore point." $y; $y += 22
+    $cbTPMReport     = Add-CheckRow $pMain "Log TPM and Secure Boot Status" $true "Documents TPM version, state, Secure Boot, and firmware type in the log." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "Finish" $y
-    $cbRestart = Add-CheckRow $pMain "Restart computer when all steps complete" $true "Prompts for confirmation before restarting." $y; $y += 10
+    $cbAutoSaveLog   = Add-CheckRow $pMain "Automatically save log to C:\Pirum\ when complete" $true "Saves a timestamped log file to C:\Pirum\ at the end of the run." $y; $y += 22
+    $cbRestart       = Add-CheckRow $pMain "Restart computer when all steps complete" $true "Prompts for confirmation before restarting." $y; $y += 10
 
     $lblNote = New-Object System.Windows.Forms.Label
-    $lblNote.Text = "Hover over any checkbox for a description. Fill in the PC Naming tab before running. All steps run in the order shown."
+    $lblNote.Text = "Hover over any checkbox for a description. Sub-tab options only execute when their main-page checkbox is also checked."
     $lblNote.Font = $segSm
     $lblNote.ForeColor = $clrLav
     $lblNote.AutoSize = $true
@@ -2101,12 +2125,22 @@ function Show-MainForm {
     $btnSaveLog.Font      = $segUI
     $pnlBottom.Controls.Add($btnSaveLog)
 
+    $btnReboot           = New-Object System.Windows.Forms.Button
+    $btnReboot.Text      = "Reboot"
+    $btnReboot.Size      = New-Object System.Drawing.Size(70, 32)
+    $btnReboot.Location  = New-Object System.Drawing.Point(374, 9)
+    $btnReboot.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#722a44")
+    $btnReboot.ForeColor = $clrWhite
+    $btnReboot.FlatStyle = "Flat"
+    $btnReboot.Font      = $segUI
+    $pnlBottom.Controls.Add($btnReboot)
+
     $lblStatus           = New-Object System.Windows.Forms.Label
     $lblStatus.Text      = "Ready. Configure options above, then click RUN SELECTED STEPS."
     $lblStatus.ForeColor = $clrGold
     $lblStatus.Font      = $segUI
     $lblStatus.AutoSize  = $true
-    $lblStatus.Location  = New-Object System.Drawing.Point(378, 16)
+    $lblStatus.Location  = New-Object System.Drawing.Point(454, 16)
     $pnlBottom.Controls.Add($lblStatus)
 
     # ================================================================
@@ -2125,6 +2159,14 @@ function Show-MainForm {
     # ================================================================
     # Event: RUN button
     # ================================================================
+    $btnReboot.Add_Click({
+        $res = [System.Windows.Forms.MessageBox]::Show(
+            "Reboot this computer now?", "Confirm Reboot",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Warning)
+        if ($res -eq "Yes") { Restart-Computer -Force }
+    })
+
     $btnRun.Add_Click({
         $btnRun.Enabled  = $false
         $lblStatus.Text  = "Running..."
@@ -2132,51 +2174,82 @@ function Show-MainForm {
         $script:LogBox.Clear()
         Write-Log "=================================================="
         Write-Log " Pirum Consulting LLC - PC Setup Tool"
-        Write-Log " $(Get-Date)   OS: $(Get-WinVersion)"
+        Write-Log " $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')   OS: $(Get-WinVersion)   Host: $env:COMPUTERNAME"
         Write-Log "=================================================="
+
+        $run = @{
+            SetName       = $cbSetName.Checked
+            SetTime       = $cbSetTime.Checked
+            TZIndex       = $cmbTimeZone.SelectedIndex
+            Power         = $cbPower.Checked
+            DefenderExcl  = $cbDefenderExcl.Checked
+            InstallChoco  = $cbInstallChoco.Checked
+            InstallApps   = $cbInstallApps.Checked
+            InstallM365   = $cbInstallM365.Checked
+            Reclaim       = $cbReclaim.Checked
+            Layout        = $cbLayout.Checked
+            Personalize   = $cbPersonalize.Checked
+            Mgmt          = $cbMgmt.Checked
+            Domain        = $cbDomain.Checked
+            BitLocker     = $cbBitLocker.Checked
+            SystemRestore = $cbSystemRestore.Checked
+            TPMReport     = $cbTPMReport.Checked
+            AutoSaveLog   = $cbAutoSaveLog.Checked
+            Restart       = $cbRestart.Checked
+            DeviceType    = if ($cmbDeviceType.SelectedItem) { ($cmbDeviceType.SelectedItem -split " - ")[0] } else { "" }
+            Company       = $txtCompany.Text.Trim().ToUpper()
+            Location      = $txtLocation.Text.Trim().ToUpper()
+            AssetID       = $txtAssetID.Text.Trim()
+            OEM           = $cbOEM.Checked
+            OEMSetMfr     = $oemMfr.Checkbox.Checked;   OEMMfr   = $oemMfr.TextBox.Text
+            OEMSetPhone   = $oemPhone.Checkbox.Checked; OEMPhone = $oemPhone.TextBox.Text
+            OEMSetHours   = $oemHours.Checkbox.Checked; OEMHours = $oemHours.TextBox.Text
+            OEMSetURL     = $oemURL.Checkbox.Checked;   OEMURL   = $oemURL.TextBox.Text
+            Wallpaper     = $cbWallpaper.Checked;       WallSrc  = $txtWallSrc.Text
+            Lockscreen    = $cbLockscreen.Checked;      LSSrc    = $txtLSSrc.Text
+            UserPics      = $cbUserPics.Checked
+            ResetPers     = $cbResetPers.Checked
+            AppAssoc      = $cbAppAssoc.Checked
+            LayoutMod     = $cbLayoutMod.Checked
+            Ninja         = $cbNinja.Checked;    NinjaSrc   = $txtNinjaPath.Text
+            Action1       = $cbAction1.Checked;  Action1Src = $txtA1Path.Text
+            IHC           = $cbIHC.Checked;      IHCSrc     = $txtIHCPath.Text
+            SelApps       = @($appCheckboxes.GetEnumerator() | Where-Object { $_.Value.Checked } | ForEach-Object { $_.Key })
+            SelDNS        = $script:SelectedDNS
+            ReclaimKeys   = @($reclaimCBs.GetEnumerator() | Where-Object { $_.Value.Checked } | ForEach-Object { $_.Key })
+        }
 
         try {
             # 1. Set PC Name
-            if ($cbSetName.Checked) {
-                $dt = if ($cmbDeviceType.SelectedItem) { ($cmbDeviceType.SelectedItem -split " - ")[0] } else { "" }
-                Invoke-SetPCName -DeviceType $dt -Company $txtCompany.Text.Trim().ToUpper() `
-                                 -Location $txtLocation.Text.Trim().ToUpper() -AssetID $txtAssetID.Text.Trim()
+            if ($run.SetName) {
+                Invoke-SetPCName -DeviceType $run.DeviceType -Company $run.Company `
+                                 -Location $run.Location -AssetID $run.AssetID
             }
-
             # 2. Set Time Zone
-            if ($cbSetTime.Checked) {
-                # $usTimeZones array index matches $cmbTimeZone dropdown index
-                $tzId = $usTimeZones[$cmbTimeZone.SelectedIndex]
+            if ($run.SetTime) {
+                $tzId = $usTimeZones[$run.TZIndex]
                 if (-not $tzId) { $tzId = "Eastern Standard Time" }
                 Invoke-SetTimeZone -TimeZoneId $tzId
             }
-
             # 3. Power Profile
-            if ($cbPower.Checked) { Invoke-SetPowerProfile }
-
-            # 3b. Defender exclusion for tech tools USB drive
-            Invoke-AddDefenderExclusion
-
+            if ($run.Power) { Invoke-SetPowerProfile }
+            # 3b. Defender exclusion
+            if ($run.DefenderExcl) { Invoke-AddDefenderExclusion }
             # 4. Chocolatey
-            if ($cbInstallChoco.Checked -or $cbInstallApps.Checked -or $cbInstallM365.Checked) { Invoke-InstallChoco }
-
+            if ($run.InstallChoco -or $run.InstallApps -or $run.InstallM365) { Invoke-InstallChoco }
             # 5. Install Apps
-            if ($cbInstallApps.Checked) {
+            if ($run.InstallApps -and $run.SelApps.Count -gt 0) {
                 Write-Log ">>> Installing baseline applications..."
-                $selected = $appCheckboxes.GetEnumerator() |
-                    Where-Object { $_.Value.Checked } |
-                    ForEach-Object { $_.Key }
-                Invoke-InstallApps -SelectedIDs @($selected)
+                Invoke-InstallApps -SelectedIDs $run.SelApps
             }
-
             # 5b. Install Microsoft 365
-            if ($cbInstallM365.Checked) { Invoke-InstallM365 }
-
+            if ($run.InstallM365) { Invoke-InstallM365 }
             # 6. Reclaim Windows
-            if ($cbReclaim.Checked) {
+            if ($run.Reclaim) {
                 Write-Log ">>> Running Reclaim Windows tweaks..."
+                $script:SelectedDNS = $run.SelDNS
                 foreach ($item in $reclaimItems) {
-                    if ($reclaimCBs[$item.Key].Checked) {
+                    if ($run.ReclaimKeys -contains $item.Key) {
                         Write-Log "    Applying: $($item.Label)"
                         try { & $item.Action }
                         catch { Write-Log "    ERROR: $_" ([System.Drawing.Color]::Red) }
@@ -2184,70 +2257,58 @@ function Show-MainForm {
                 }
                 Write-Log "    Reclaim Windows complete."
             }
-
-            # 7. Layout Design
-            if ($cbLayout.Checked) { Invoke-LayoutDesign }
-
-            # 8. Personalize
-            if ($cbPersonalize.Checked) {
+            # 7. Layout Design (gated: Layout main checkbox)
+            if ($run.Layout) { Invoke-LayoutDesign }
+            # 8. Personalize (gated: Personalize main checkbox)
+            if ($run.Personalize) {
                 Write-Log ">>> Applying personalization..."
                 Invoke-Personalize `
-                    -DoOEM               $cbOEM.Checked                `
-                    -OEMSetManufacturer  $oemMfr.Checkbox.Checked      `
-                    -OEMManufacturer     $oemMfr.TextBox.Text          `
-                    -OEMSetPhone         $oemPhone.Checkbox.Checked    `
-                    -OEMPhone            $oemPhone.TextBox.Text        `
-                    -OEMSetHours         $oemHours.Checkbox.Checked    `
-                    -OEMHours            $oemHours.TextBox.Text        `
-                    -OEMSetURL           $oemURL.Checkbox.Checked      `
-                    -OEMURL              $oemURL.TextBox.Text          `
-                    -DoWallpaper         $cbWallpaper.Checked          `
-                    -WallpaperSrc        $txtWallSrc.Text              `
-                    -DoLockscreen        $cbLockscreen.Checked         `
-                    -LockscreenSrc       $txtLSSrc.Text                `
-                    -DoUserPictures      $cbUserPics.Checked           `
-                    -DoReset             $cbResetPers.Checked
+                    -DoOEM $run.OEM -OEMSetManufacturer $run.OEMSetMfr -OEMManufacturer $run.OEMMfr `
+                    -OEMSetPhone $run.OEMSetPhone -OEMPhone $run.OEMPhone `
+                    -OEMSetHours $run.OEMSetHours -OEMHours $run.OEMHours `
+                    -OEMSetURL $run.OEMSetURL -OEMURL $run.OEMURL `
+                    -DoWallpaper $run.Wallpaper -WallpaperSrc $run.WallSrc `
+                    -DoLockscreen $run.Lockscreen -LockscreenSrc $run.LSSrc `
+                    -DoUserPictures $run.UserPics -DoReset $run.ResetPers
             }
-
-            # 8b. App Associations XML
-            if ($cbAppAssoc.Checked) {
+            # 8b. App Associations (gated: Layout main checkbox)
+            if ($run.Layout -and $run.AppAssoc) {
                 Invoke-ApplyAppAssociations -XmlPath "C:\Pirum\xml\AppAssociations.xml"
             }
-
-            # 8c. Layout Modification XML
-            if ($cbLayoutMod.Checked) {
+            # 8c. Layout Modification XML (gated: Layout main checkbox)
+            if ($run.Layout -and $run.LayoutMod) {
                 Invoke-ApplyLayoutModification -XmlBasePath "C:\Pirum\xml"
             }
-
-            # 9. Management Software
-            if ($cbMgmt.Checked) {
+            # 9. Management Software (gated: Mgmt main checkbox)
+            if ($run.Mgmt) {
                 Write-Log ">>> Installing management software..."
                 Invoke-InstallManagementSoftware `
-                    -DoNinja       $cbNinja.Checked   `
-                    -DoAction1     $cbAction1.Checked `
-                    -DoIHC         $cbIHC.Checked     `
-                    -NinjaSource   $txtNinjaPath.Text `
-                    -Action1Source $txtA1Path.Text    `
-                    -IHCSource     $txtIHCPath.Text
+                    -DoNinja $run.Ninja -NinjaSource $run.NinjaSrc `
+                    -DoAction1 $run.Action1 -Action1Source $run.Action1Src `
+                    -DoIHC $run.IHC -IHCSource $run.IHCSrc
             }
-
-            # 9b. System Restore Point (before any domain join or reboot)
-            Invoke-CreateRestorePoint
-
-            # 9c. Log TPM and Secure Boot status
-            Invoke-LogSecurityHardwareStatus
-
+            # 9b. System Restore Point
+            if ($run.SystemRestore) { Invoke-CreateRestorePoint }
+            # 9c. TPM and Secure Boot log
+            if ($run.TPMReport) { Invoke-LogSecurityHardwareStatus }
             # 9d. BitLocker
-            if ($cbBitLocker.Checked) { Invoke-EnableBitLocker }
-
+            if ($run.BitLocker) {
+                # If a rename was scheduled, pass the intended name so the key file
+                # uses the correct hostname rather than the pre-reboot name
+                $pendingName = ""
+                if ($run.SetName -and $run.Company -and $run.Location -and $run.DeviceType -and $run.AssetID) {
+                    $pendingName = "$($run.Company)-$($run.Location)-$($run.DeviceType)-$($run.AssetID)"
+                }
+                Invoke-EnableBitLocker -PendingHostname $pendingName
+            }
             # 10. Join Domain
-            if ($cbDomain.Checked) { Invoke-JoinDomain }
+            if ($run.Domain) { Invoke-JoinDomain }
 
             Write-Log ""
             Write-Log "=================================================="
             Write-Log " All selected steps complete."
             Write-Log "=================================================="
-            $lblStatus.Text = "All steps complete. Check log for details."
+            $lblStatus.Text = "All steps complete."
 
         } catch {
             Write-Log "CRITICAL ERROR: $_" ([System.Drawing.Color]::Red)
@@ -2256,14 +2317,24 @@ function Show-MainForm {
 
         $btnRun.Enabled = $true
 
+        # Auto-save log
+        if ($run.AutoSaveLog) {
+            if (-not (Test-Path "C:\Pirum")) { New-Item "C:\Pirum" -ItemType Directory -Force | Out-Null }
+            $ts2 = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+            $lp  = "C:\Pirum\PCSetup_Log_$ts2.txt"
+            try {
+                $script:LogBox.Text | Out-File -FilePath $lp -Encoding UTF8 -Force
+                $lblStatus.Text = "Complete. Log saved: $lp"
+            } catch { Write-Log "    Could not auto-save log: $_" ([System.Drawing.Color]::Yellow) }
+        }
+
         # Restart prompt
-        if ($cbRestart.Checked) {
+        if ($run.Restart) {
             $res = [System.Windows.Forms.MessageBox]::Show(
                 "All selected steps are complete.`n`nRestart the computer now?",
                 "Restart",
                 [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                [System.Windows.Forms.MessageBoxIcon]::Question
-            )
+                [System.Windows.Forms.MessageBoxIcon]::Question)
             if ($res -eq "Yes") { Restart-Computer -Force }
         }
     })
