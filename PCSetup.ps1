@@ -1411,7 +1411,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.56"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.57"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2458,7 +2458,7 @@ function Show-MainForm {
 
         # Collect all function definitions to inject into the runspace
         $fnNames = @(
-            "Write-Log","Write-ChocoLog","Ensure-RegPath","Get-WinVersion",
+            "Ensure-RegPath","Get-WinVersion",
             "Invoke-SetPCName","Invoke-SetTimeZone","Invoke-InstallChoco",
             "Invoke-InstallApps","Invoke-InstallM365","Invoke-InstallCustomApp",
             "Invoke-SetPowerProfile","Invoke-LayoutDesign","Invoke-JoinDomain",
@@ -2495,28 +2495,53 @@ function Show-MainForm {
             $ps.AddScript($def) | Out-Null
         }
 
-        # Runspace Write-Log: direct AppendText, same pattern that worked in v1.45.
-        # No InvokeRequired check - the timer callback on the UI thread calls DoEvents
-        # so the control is accessible. Direct access works because the STA runspace
-        # shares the COM apartment with the UI thread.
-        $ps.AddScript(@'
-function Write-Log {
-    param([string]$Text, [System.Drawing.Color]$Color = [System.Drawing.Color]::LightGreen)
-    if (-not $script:LogBox) { return }
-    $ts  = Get-Date -Format 'HH:mm:ss'
-    $hex = [string]::Format('#{0:X2}{1:X2}{2:X2}', $Color.R, $Color.G, $Color.B)
-    $lb  = $script:LogBox
-    $lb.SelectionStart  = $lb.TextLength
-    $lb.SelectionLength = 0
-    $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml('#5a7a5a')
-    $lb.AppendText("[$ts] ")
-    $lb.SelectionStart  = $lb.TextLength
-    $lb.SelectionLength = 0
-    $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($hex)
-    $lb.AppendText("$Text`n")
-    $lb.ScrollToCaret()
-}
-'@) | Out-Null
+        # Inject runspace-safe Write-Log as a scriptblock - no quoting issues.
+        # NOT in fnNames (which would inject the DoEvents version).
+        $ps.AddScript({
+            function Write-Log {
+                param([string]$Text, [System.Drawing.Color]$Color = [System.Drawing.Color]::LightGreen)
+                if (-not $script:LogBox) { return }
+                $ts  = Get-Date -Format 'HH:mm:ss'
+                $hex = [string]::Format('#{0:X2}{1:X2}{2:X2}', $Color.R, $Color.G, $Color.B)
+                $lb  = $script:LogBox
+                $lb.SelectionStart  = $lb.TextLength
+                $lb.SelectionLength = 0
+                $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml('#5a7a5a')
+                $lb.AppendText("[$ts] ")
+                $lb.SelectionStart  = $lb.TextLength
+                $lb.SelectionLength = 0
+                $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($hex)
+                $lb.AppendText("$Text`n")
+                $lb.ScrollToCaret()
+            }
+            function Write-ChocoLog {
+                param([string]$Text)
+                if (-not $script:LogBox) { return }
+                $isProgress = ($Text -match '^\s*\d+%') -or
+                              ($Text -match 'Progress:') -or
+                              ($Text -match 'Downloading\s+\d') -or
+                              ($Text -match '[#=]{5}')
+                $lb = $script:LogBox
+                if ($isProgress) {
+                    $lastN = $lb.Text.LastIndexOf("`n")
+                    if ($lastN -ge 0) {
+                        $lb.SelectionStart  = $lastN + 1
+                        $lb.SelectionLength = $lb.TextLength - ($lastN + 1)
+                    } else {
+                        $lb.SelectionStart  = 0
+                        $lb.SelectionLength = $lb.TextLength
+                    }
+                    $lb.SelectionColor = [System.Drawing.ColorTranslator]::FromHtml('#6a9a50')
+                    $lb.SelectedText   = "      $($Text.Trim())"
+                } else {
+                    $lb.SelectionStart  = $lb.TextLength
+                    $lb.SelectionLength = 0
+                    $lb.SelectionColor  = [System.Drawing.Color]::LightGreen
+                    $lb.AppendText("      $Text`n")
+                }
+                $lb.ScrollToCaret()
+            }
+        }) | Out-Null
 
 
 
@@ -2710,6 +2735,13 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.57  - Root cause fix: Write-Log and Write-ChocoLog were in fnNames, so
+#          the main-session versions (with DoEvents) were injected into the
+#          runspace and ran on a background thread where DoEvents does nothing.
+#          Removed both from fnNames. Replaced the fragile here-string/escaped-
+#          string injection with a clean scriptblock AddScript containing both
+#          functions - no quoting issues, variables expand correctly at runtime.
 #
 # v1.56  - Bug fix: main Write-Log still had [MethodInvoker] cast at definition
 #          time, failing before WinForms loads. Removed entirely - direct
