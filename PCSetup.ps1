@@ -1400,10 +1400,8 @@ function Show-MainForm {
     $pnlHeader.Dock        = "Top"
     $pnlHeader.Height      = $hdrH
     $pnlHeader.BackColor   = $clrPurple
-    # Dock add order: Bottom then Top then Fill
-    $form.Controls.Add($pnlBottom)
-    $form.Controls.Add($pnlHeader)
-    $form.Controls.Add($split)
+    # NOTE: form.Controls.Add calls for pnlBottom, pnlHeader, split
+    # are deferred below after all three objects are created.
 
     # SplitterDistance must be set after the control is parented and sized
     $script:splitTabW = $tabW   # capture for event handler scope
@@ -1417,7 +1415,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.11"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.12"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -1503,6 +1501,11 @@ function Show-MainForm {
     $pnlBottom.Dock      = "Bottom"
     $pnlBottom.Height    = $footH
     $pnlBottom.BackColor = $clrPurple
+
+    # All three major panels now created - add to form in correct dock order
+    $form.Controls.Add($pnlBottom)   # Bottom first
+    $form.Controls.Add($pnlHeader)   # Top second
+    $form.Controls.Add($split)       # Fill last
 
     # Helper: make a scrollable tab panel
     function New-TabPage([string]$Title) {
@@ -2569,3 +2572,59 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 Show-MainForm
+
+# ============================================================
+# VERSION HISTORY
+# ============================================================
+#
+# v1.12  - Bug fix: form.Controls.Add called before pnlBottom and split were
+#          instantiated, resulting in blank window with only the header visible.
+#          Moved all three Controls.Add calls to after all three panel objects
+#          are created.
+#
+# v1.11  - Bug fix: SplitterDistance, Panel1MinSize, Panel2MinSize in Add_Shown
+#          handler could not access $tabW (local scope not visible in PS event
+#          handlers). Captured values in $script: scope before handler registration.
+#
+# v1.1   - Added version number to header title bar.
+#        - Replaced tab-based log with always-visible side panel (right of tabs).
+#        - Implemented SplitContainer for resizable tab/log layout.
+#        - Form width now capped at 1600px or screen width, whichever is less.
+#        - Tab panel fixed at 724px; log panel takes remaining width.
+#        - Log panel header includes Wrap toggle checkbox (word wrap off by default,
+#          both scrollbars shown; toggles to word wrap with vertical scroll only).
+#        - Header, footer, and SplitContainer converted to Dock layout.
+#        - Section label and checkbox helper widths now derived from parent panel
+#          width rather than fixed pixel values.
+#        - M365 command label removed from Applications tab (checkbox retained).
+#        - DNS provider dropdown width halved to 350px.
+#        - Management tab agent path fields halved to 365px; browse buttons moved.
+#        - $clrDark color variable defined (#1a1a1a) - was missing, caused null
+#          ForeColor errors on btnAppsReset and btnSaveLog.
+#
+# v1.0   - Initial versioned release. Compiled from development session.
+#          Features at this version:
+#          Core: PC naming (Pirum format), time zone, Pirum power profile with
+#          high-performance CPU settings, Windows Defender exclusion for Utilities
+#          USB drive (_Collections\_TechToolStore).
+#          Applications: Chocolatey install, baseline app list with per-app
+#          checkboxes, Select All/Deselect All/Reset buttons, Microsoft 365
+#          (O365BusinessRetail Monthly), custom choco install by ID, clickable
+#          Chocolatey package browser link.
+#          Reclaim Windows: Privacy, System Tweaks (incl. disable SMBv1, enable
+#          SMB signing, Core Isolation/HVCI, transparency/animation off, DNS
+#          provider selection), UI Tweaks, Bloatware removal.
+#          Layout & Personalization: LayoutModification XML, AppAssociations XML,
+#          OEM branding, wallpaper, lock screen, user account pictures.
+#          Management: NinjaOne RMM, Action1, Instant Housecall - each with
+#          path/URL field, browse button, auto-detection of MSI vs EXE.
+#          Security: BitLocker (TPM protector, recovery key saved to CustData USB
+#          with hostname-prefixed filename; uses pending hostname if rename is
+#          scheduled), System Restore Point (Initial Provisioning), TPM and Secure
+#          Boot status logging.
+#          Domain join, auto log save, restart prompt, manual Reboot button.
+#          Non-blocking execution via PowerShell runspace + background thread;
+#          Run button toggles to Cancel with $script:CancelRequested flag checked
+#          between major steps; UI remains responsive during long operations.
+#          Timestamps on all log entries. Log saved to C:\Pirum\ with timestamp
+#          filename on completion (if auto-save selected).
