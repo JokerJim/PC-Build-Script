@@ -1419,7 +1419,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.41"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.42"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2294,10 +2294,25 @@ function Show-MainForm {
         if ($w -lt 10) { return }  # panel not yet measured
 
         foreach ($ctrl in $Panel.Controls) {
-            # Resize labels, textboxes, comboboxes that span to the right edge
-            if ($ctrl -is [System.Windows.Forms.Label] -or
-                $ctrl -is [System.Windows.Forms.TextBox] -or
-                $ctrl -is [System.Windows.Forms.ComboBox]) {
+            # Word-wrap block labels: AutoSize labels with long text get
+            # converted to fixed-width wrapping labels on first pass.
+            # Short inline labels ("Image file:", "URL:", etc.) are left alone.
+            if ($ctrl -is [System.Windows.Forms.Label] -and $ctrl.AutoSize -and $ctrl.Text.Length -gt 40) {
+                $ctrl.AutoSize  = $false
+                $ctrl.AutoEllipsis = $false
+                $ctrl.MaximumSize = New-Object System.Drawing.Size(0, 0)  # no cap
+                $ctrl.Width     = $w - $ctrl.Left - 8
+                # Let WinForms measure the required height for the wrapped text
+                $g = $ctrl.CreateGraphics()
+                $sz = $g.MeasureString($ctrl.Text, $ctrl.Font, $ctrl.Width)
+                $g.Dispose()
+                $ctrl.Height = [Math]::Max([int]$sz.Height + 4, 16)
+            }
+
+            # Resize anchored textboxes, non-AutoSize labels, and comboboxes
+            if ($ctrl -is [System.Windows.Forms.TextBox] -or
+                $ctrl -is [System.Windows.Forms.ComboBox] -or
+                ($ctrl -is [System.Windows.Forms.Label] -and -not $ctrl.AutoSize)) {
                 $a = $ctrl.Anchor
                 $hasLeft  = $a -band [System.Windows.Forms.AnchorStyles]::Left
                 $hasRight = $a -band [System.Windows.Forms.AnchorStyles]::Right
@@ -2667,6 +2682,11 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.42  - Update-TabLayout now word-wraps long AutoSize labels (text > 40
+#          chars) on first layout pass. Uses Graphics.MeasureString to
+#          calculate required height for wrapped text. Short inline labels
+#          (field labels, status labels under 40 chars) are unaffected.
 #
 # v1.41  - Bug fix: wallpaper and lockscreen browse buttons had no Tag set
 #          so Update-TabLayout never positioned them. Agent browse buttons
