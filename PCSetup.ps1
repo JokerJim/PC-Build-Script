@@ -1406,7 +1406,11 @@ function Show-MainForm {
     $form.Controls.Add($split)
 
     # SplitterDistance must be set after the control is parented and sized
-    $form.Add_Load({ try { $split.SplitterDistance = $tabW } catch {} })
+    $form.Add_Load({
+        $split.Panel1MinSize    = 400
+        $split.Panel2MinSize    = 300
+        try { $split.SplitterDistance = $tabW } catch {}
+    })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
     $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool"
@@ -1428,11 +1432,9 @@ function Show-MainForm {
     $split                       = New-Object System.Windows.Forms.SplitContainer
     $split.Dock                  = "Fill"
     $split.SplitterWidth         = 6
-    $split.Panel1MinSize         = 400
-    $split.Panel2MinSize         = 300
     $split.FixedPanel            = "None"
-    $split.BackColor             = $clrPurple   # splitter bar color
-    # SplitterDistance set after controls are added to avoid min-size validation errors
+    $split.BackColor             = $clrPurple
+    # MinSize and SplitterDistance set in Load event after control has real dimensions
 
     # Left pane: tab control fills Panel1
     $tabs                  = New-Object System.Windows.Forms.TabControl
