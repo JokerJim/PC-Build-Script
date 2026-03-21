@@ -49,20 +49,23 @@ function Write-Log {
     if (-not $script:LogBox) { return }
     $ts       = Get-Date -Format "HH:mm:ss"
     $colorHex = [string]::Format("#{0:X2}{1:X2}{2:X2}", $Color.R, $Color.G, $Color.B)
-    $sb = {
+    # Store in script scope so the MethodInvoker scriptblock can access them
+    $script:_logTs    = $ts
+    $script:_logColor = $colorHex
+    $script:_logText  = $Text
+    $sb = [System.Windows.Forms.MethodInvoker]{
         $script:LogBox.SelectionStart  = $script:LogBox.TextLength
         $script:LogBox.SelectionLength = 0
         $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
-        $script:LogBox.AppendText("[$ts] ")
+        $script:LogBox.AppendText("[$script:_logTs] ")
         $script:LogBox.SelectionStart  = $script:LogBox.TextLength
         $script:LogBox.SelectionLength = 0
-        $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($colorHex)
-        $script:LogBox.AppendText("$Text`n")
+        $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($script:_logColor)
+        $script:LogBox.AppendText("$script:_logText`n")
         $script:LogBox.ScrollToCaret()
     }
-    # If we are on the UI thread, invoke directly; otherwise marshal via MethodInvoker
     if ($script:LogBox.InvokeRequired) {
-        $script:LogBox.Invoke([System.Windows.Forms.MethodInvoker]$sb)
+        $script:LogBox.Invoke($sb)
     } else {
         & $sb
         [System.Windows.Forms.Application]::DoEvents()
@@ -1407,6 +1410,8 @@ function Show-MainForm {
     $script:splitTabW = $tabW   # capture for event handler scope
     $script:splitCtrl = $split
     $form.Add_Shown({
+        $script:splitCtrl.Panel1MinSize = [int]($form.ClientSize.Width * 0.30)
+        $script:splitCtrl.Panel2MinSize = 150
         try { $script:splitCtrl.SplitterDistance = $script:splitTabW } catch {}
         # Run initial layout pass on the first visible tab
         $tp = $tabs.SelectedTab
@@ -1416,7 +1421,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.46"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.5"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -1435,8 +1440,8 @@ function Show-MainForm {
     $split                       = New-Object System.Windows.Forms.SplitContainer
     $split.Dock                  = "Fill"
     $split.SplitterWidth  = 6
-    $split.Panel1MinSize  = 300
-    $split.Panel2MinSize  = 150
+    $split.Panel1MinSize  = 0
+    $split.Panel2MinSize  = 0
     $split.FixedPanel     = "None"
     $split.BackColor      = $clrPurple
     # MinSize and SplitterDistance set in Load event after control has real dimensions
@@ -2590,52 +2595,52 @@ function Show-MainForm {
         $timer.Interval = 500
 
         # Capture needed references for the timer closure
-        $timerPs     = $ps
-        $timerRs     = $rs
-        $timerAsync  = $asyncResult
-        $timerRun    = $run
+        $script:timerPs     = $ps
+        $script:timerRs     = $rs
+        $script:timerAsync  = $asyncResult
+        $script:timerRun    = $run
         $script:timerBtn = $btnRun
-        $timerStatus = $lblStatus
-        $timerForm   = $form
+        $script:timerStatus = $lblStatus
+        $script:timerForm   = $form
 
         $timer.Add_Tick({
-            if ($timerAsync.IsCompleted) {
+            if ($script:timerAsync.IsCompleted) {
                 $timer.Stop()
                 $timer.Dispose()
 
                 # Collect any terminating errors from the runspace
-                if ($timerPs.HadErrors) {
-                    $timerPs.Streams.Error | ForEach-Object {
+                if ($script:timerPs.HadErrors) {
+                    $script:timerPs.Streams.Error | ForEach-Object {
                         Write-Log "    Runspace error: $_" ([System.Drawing.Color]::Red)
                     }
                 }
-                $timerPs.EndInvoke($timerAsync) | Out-Null
-                $timerPs.Dispose()
-                $timerRs.Close()
-                $timerRs.Dispose()
+                $script:timerPs.EndInvoke($script:timerAsync) | Out-Null
+                $script:timerPs.Dispose()
+                $script:timerRs.Close()
+                $script:timerRs.Dispose()
 
                 $wasCancelled = $script:CancelRequested
                 $script:CancelRequested = $false
                 $script:timerBtn.BackColor = [System.Drawing.ColorTranslator]::FromHtml("#44722a")
                 $script:timerBtn.Enabled   = $true
                 $script:timerBtn.Text      = "RUN SELECTED STEPS"
-                $timerStatus.Text   = if ($wasCancelled) { "Run cancelled." } else { "All steps complete." }
+                $script:timerStatus.Text = if ($wasCancelled) { "Run cancelled." } else { "All steps complete." }
 
                 # Auto-save and restart only run on clean completion, not cancel
-                if (-not $script:CancelRequested -and $timerRun.AutoSaveLog) {
+                if (-not $script:CancelRequested -and $script:timerRun.AutoSaveLog) {
                     if (-not (Test-Path "C:\Pirum")) { New-Item "C:\Pirum" -ItemType Directory -Force | Out-Null }
                     $ts2 = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
                     $lp  = "C:\Pirum\PCSetup_Log_$ts2.txt"
                     try {
                         $script:LogBox.Text | Out-File -FilePath $lp -Encoding UTF8 -Force
-                        $timerStatus.Text = "Complete. Log saved: $lp"
+                        $script:timerStatus.Text = "Complete. Log saved: $lp"
                     } catch {
                         Write-Log "    Could not auto-save log: $_" ([System.Drawing.Color]::Yellow)
                     }
                 }
 
                 # Restart prompt
-                if (-not $script:CancelRequested -and $timerRun.Restart) {
+                if (-not $script:CancelRequested -and $script:timerRun.Restart) {
                     $res = [System.Windows.Forms.MessageBox]::Show(
                         "All selected steps are complete.`n`nRestart the computer now?",
                         "Restart",
@@ -2688,6 +2693,19 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.5   - Bug fix: Write-Log scriptblock executed via Control.Invoke() could
+#          not access local variables $ts, $colorHex, $Text (scope lost when
+#          crossing thread boundary). Values now stored in $script:_logTs,
+#          $script:_logColor, $script:_logText before invoking.
+#        - Bug fix: all timer closure variables ($timerPs, $timerRs,
+#          $timerAsync, $timerRun, $timerStatus, $timerForm) promoted to
+#          $script: scope so the Add_Tick handler can access them.
+#          This fixes the Cancel button not reverting to Run on completion.
+#        - Bug fix: SplitContainer Panel1MinSize/Panel2MinSize set to 0 at
+#          creation (width is 0, any positive value fails validation).
+#          Real values (30%% of width / 150px) set in Add_Shown where the
+#          form has been measured.
 #
 # v1.46  - Bug fix: [System.Action]{ } delegate cast syntax not supported in
 #          PS 5. Write-Log now uses [System.Windows.Forms.MethodInvoker]$sb
