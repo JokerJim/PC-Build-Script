@@ -49,26 +49,23 @@ function Write-Log {
     if (-not $script:LogBox) { return }
     $ts       = Get-Date -Format "HH:mm:ss"
     $colorHex = [string]::Format("#{0:X2}{1:X2}{2:X2}", $Color.R, $Color.G, $Color.B)
-    # Store in script scope so the scriptblock can access them across threads
-    $script:_logTs    = $ts
-    $script:_logColor = $colorHex
-    $script:_logText  = $Text
-    $sb = {
-        $script:LogBox.SelectionStart  = $script:LogBox.TextLength
-        $script:LogBox.SelectionLength = 0
-        $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
-        $script:LogBox.AppendText("[$script:_logTs] ")
-        $script:LogBox.SelectionStart  = $script:LogBox.TextLength
-        $script:LogBox.SelectionLength = 0
-        $script:LogBox.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($script:_logColor)
-        $script:LogBox.AppendText("$script:_logText`n")
-        $script:LogBox.ScrollToCaret()
+    $lb = $script:LogBox
+    $action = [System.Windows.Forms.MethodInvoker]{
+        param()
+        $lb.SelectionStart  = $lb.TextLength
+        $lb.SelectionLength = 0
+        $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml("#5a7a5a")
+        $lb.AppendText("[{0}] " -f $ts)
+        $lb.SelectionStart  = $lb.TextLength
+        $lb.SelectionLength = 0
+        $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($colorHex)
+        $lb.AppendText("{0}`n" -f $Text)
+        $lb.ScrollToCaret()
     }
-    if ($script:LogBox.InvokeRequired) {
-        # Cast to MethodInvoker at call time, after WinForms assembly is loaded
-        $script:LogBox.Invoke([System.Windows.Forms.MethodInvoker]$sb)
+    if ($lb.InvokeRequired) {
+        $lb.Invoke($action)
     } else {
-        & $sb
+        & $action
         [System.Windows.Forms.Application]::DoEvents()
     }
 }
@@ -1422,7 +1419,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.54"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.55"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2506,30 +2503,29 @@ function Show-MainForm {
             $ps.AddScript($def) | Out-Null
         }
 
-        # Runspace-safe Write-Log: no delegate casting at definition time.
-        # Stores text in runspace script-scope vars, invokes via MethodInvoker cast at call time.
+        # Runspace Write-Log: direct AppendText, same pattern that worked in v1.45.
+        # No InvokeRequired check - the timer callback on the UI thread calls DoEvents
+        # so the control is accessible. Direct access works because the STA runspace
+        # shares the COM apartment with the UI thread.
         $ps.AddScript(@'
 function Write-Log {
     param([string]$Text, [System.Drawing.Color]$Color = [System.Drawing.Color]::LightGreen)
     if (-not $script:LogBox) { return }
-    $script:_rs_ts    = Get-Date -Format 'HH:mm:ss'
-    $script:_rs_hex   = [string]::Format('#{0:X2}{1:X2}{2:X2}', $Color.R, $Color.G, $Color.B)
-    $script:_rs_text  = $Text
-    $lb = $script:LogBox
-    $sb = {
-        $lb.SelectionStart  = $lb.TextLength
-        $lb.SelectionLength = 0
-        $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml('#5a7a5a')
-        $lb.AppendText("[$($script:_rs_ts)] ")
-        $lb.SelectionStart  = $lb.TextLength
-        $lb.SelectionLength = 0
-        $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($script:_rs_hex)
-        $lb.AppendText("$($script:_rs_text)`n")
-        $lb.ScrollToCaret()
-    }
-    $lb.Invoke([System.Windows.Forms.MethodInvoker]$sb)
+    $ts  = Get-Date -Format 'HH:mm:ss'
+    $hex = [string]::Format('#{0:X2}{1:X2}{2:X2}', $Color.R, $Color.G, $Color.B)
+    $lb  = $script:LogBox
+    $lb.SelectionStart  = $lb.TextLength
+    $lb.SelectionLength = 0
+    $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml('#5a7a5a')
+    $lb.AppendText("[$ts] ")
+    $lb.SelectionStart  = $lb.TextLength
+    $lb.SelectionLength = 0
+    $lb.SelectionColor  = [System.Drawing.ColorTranslator]::FromHtml($hex)
+    $lb.AppendText("$Text`n")
+    $lb.ScrollToCaret()
 }
 '@) | Out-Null
+
 
 
 
@@ -2722,6 +2718,14 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.55  - Write-Log both main and runspace: reverted to direct AppendText
+#          pattern that was confirmed working in v1.45. Runspace Write-Log
+#          drops InvokeRequired/Invoke entirely - direct property access
+#          works because the STA runspace shares the COM apartment with
+#          the UI thread. Main Write-Log keeps MethodInvoker for the
+#          InvokeRequired path but uses lb.Invoke() with a captured $lb
+#          reference and -f string formatting to avoid scope issues.
 #
 # v1.54  - Bug fix: runspace Write-Log still had [MethodInvoker] cast at
 #          definition time (inside AddScript string), and closure variables
