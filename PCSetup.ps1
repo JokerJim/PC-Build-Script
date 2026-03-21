@@ -1417,7 +1417,7 @@ function Show-MainForm {
     })
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.1"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.11"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
