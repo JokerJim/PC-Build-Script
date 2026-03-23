@@ -932,7 +932,16 @@ function Get-ReclaimItems {
             Category = "SystemTweaks"
             Default  = $true
             Advisory = "STRONGLY RECOMMENDED. Enables the Windows Firewall on Domain, Private, and Public profiles. Should always be on in a managed environment."
-            Action   = { Set-NetFirewallProfile -Profile * -Enabled True }
+            Action   = {
+                try {
+                    Import-Module NetSecurity -ErrorAction Stop
+                    Set-NetFirewallProfile -Profile * -Enabled True
+                } catch {
+                    # Fall back to netsh if NetSecurity module unavailable
+                    netsh advfirewall set allprofiles state on | Out-Null
+                    Write-Log "    Firewall enabled via netsh (NetSecurity module not available)"
+                }
+            }
         }
         [PSCustomObject]@{
             Key      = "EnsureDefenderEnabled"
@@ -987,8 +996,9 @@ function Get-ReclaimItems {
             Default  = $true
             Advisory = "RECOMMENDED. Disables Xbox game-save telemetry, CEIP, and device management client tasks. These serve no purpose on business machines."
             Action   = {
+                # Use schtasks.exe - Get-ScheduledTask can hang on slow systems
                 @("XblGameSaveTask","Consolidator","UsbCeip","DmClient","DmClientOnScenarioDownload") | ForEach-Object {
-                    Get-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue | Disable-ScheduledTask -ErrorAction SilentlyContinue
+                    schtasks /Change /TN $_ /Disable 2>$null | Out-Null
                 }
             }
         }
@@ -1399,7 +1409,7 @@ function Show-MainForm {
 
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.60"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.61"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2743,6 +2753,11 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.61  - Bug fix: Set-NetFirewallProfile fails if NetSecurity module is not
+#          loaded. Now imports module first, falls back to netsh if unavailable.
+#        - Bug fix: Get-ScheduledTask hangs on slow systems. Replaced with
+#          schtasks.exe /Change /Disable which does not block.
 #
 # v1.60  - Bug fix: $script:splitCtrl assigned before $split was created,
 #          causing Panel1MinSize/Panel2MinSize errors. Moved Add_Shown to
