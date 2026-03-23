@@ -336,10 +336,17 @@ function Invoke-EnableBitLocker {
             if ($_ -match "0xC0310102" -or $_ -match "PCR") {
                 Write-Log "    PCR binding conflict - retrying with manage-bde -SkipHardwareTest..." ([System.Drawing.Color]::Yellow)
                 try {
-                    $mbResult = manage-bde -on $driveLetter -UsedSpaceOnly -SkipHardwareTest 2>&1
-                    Write-Log "    manage-bde: $($mbResult -join ' ')"
+                    $mbResult = manage-bde -on $driveLetter -SkipHardwareTest 2>&1
+                    $mbText = $mbResult -join ' '
+                    Write-Log "    manage-bde: $mbText"
+                    # manage-bde outputs success text in multiple languages; check for key phrases
+                    # or fall back to VolumeStatus (may still be FullyDecrypted while queued)
                     $blCheck = Get-BitLockerVolume -MountPoint $driveLetter -ErrorAction SilentlyContinue
-                    if ($blCheck -and ($blCheck.VolumeStatus -ne "FullyDecrypted")) {
+                    $mbSuccess = ($mbText -match "percentage completed") -or
+                                 ($mbText -match "encryption in progress") -or
+                                 ($blCheck -and $blCheck.VolumeStatus -ne "FullyDecrypted") -or
+                                 ($blCheck -and $blCheck.EncryptionPercentage -gt 0)
+                    if ($mbSuccess) {
                         Write-Log "    BitLocker enabled on $driveLetter (manage-bde fallback, PCR7 skipped)."
                     } else {
                         Write-Log "    ERROR: manage-bde did not enable BitLocker. Clear TPM in BIOS and retry." ([System.Drawing.Color]::Red)
@@ -1149,6 +1156,7 @@ function Get-ReclaimItems {
             Advisory = "STRONGLY RECOMMENDED. SMBv1 is the attack vector for WannaCry and similar ransomware. Should never be enabled on a managed business endpoint. Disabling it has no impact on modern networks."
             Action   = {
                 Import-Module SmbShare -ErrorAction SilentlyContinue
+                Import-Module Dism    -ErrorAction SilentlyContinue
                 Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force -ErrorAction SilentlyContinue
                 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "SMB1" -Type DWord -Value 0 -ErrorAction SilentlyContinue
                 Disable-WindowsOptionalFeature -Online -FeatureName "SMB1Protocol" -NoRestart -ErrorAction SilentlyContinue | Out-Null
@@ -1353,6 +1361,7 @@ function Get-ReclaimItems {
                     "*Minecraft*","*Royal Revolt*","*Sway*","*Dolby*","*Windows.CBSPreview*"
                 )
                 Import-Module Appx -ErrorAction SilentlyContinue
+                Import-Module Dism -ErrorAction SilentlyContinue
                 foreach ($bloat in $BloatList) {
                     Get-AppxPackage -Name $bloat -AllUsers -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
                     Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
@@ -1444,7 +1453,7 @@ function Show-MainForm {
 
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.64"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.65"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2724,8 +2733,10 @@ function Show-MainForm {
                 # Clean up runspace - check state before closing
                 if ($t.Rs) {
                     try {
-                        if ($t.Rs.RunspaceStateInfo.State -ne [System.Management.Automation.Runspaces.RunspaceState]::Closed -and
-                            $t.Rs.RunspaceStateInfo.State -ne [System.Management.Automation.Runspaces.RunspaceState]::Broken) {
+                        # Compare as string - avoids type resolution issues in runspace context.
+                        # Only call Close() if the runspace is in a closeable state.
+                        $rsState = $t.Rs.RunspaceStateInfo.State.ToString()
+                        if ($rsState -notin @("Closed","Broken","Closing")) {
                             $t.Rs.Close()
                         }
                     } catch {}
@@ -2806,6 +2817,17 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.65  - Bug fix: Disable-WindowsOptionalFeature and Get-AppxProvisionedPackage
+#          both live in the Dism module, not SmbShare/Appx. Added Import-Module
+#          Dism before each.
+#        - Bug fix: manage-bde -UsedSpaceOnly not recognized on all Windows builds.
+#          Dropped that flag. Success detection now checks output text for
+#          'percentage completed' / 'encryption in progress', plus VolumeStatus
+#          and EncryptionPercentage as fallbacks.
+#        - Bug fix: runspace Rs.Close() still threw on Closing state. Changed
+#          enum comparison to .ToString() string check, added Closing to the
+#          skip list alongside Closed and Broken.
 #
 # v1.64  - Bug fix: runspace cleanup after completion threw 'unauthorized
 #          operation'. Wrapped every cleanup step (Dispose timer, EndInvoke,
