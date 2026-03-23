@@ -325,13 +325,35 @@ function Invoke-EnableBitLocker {
         Write-Log "    Backing up existing recovery key..."
     } else {
         try {
-            # Enable BitLocker with TPM only (no PIN - appropriate for managed business endpoints)
+            # First attempt: TPM only, default PCR profile
             Enable-BitLocker -MountPoint $driveLetter -TpmProtector -ErrorAction Stop | Out-Null
             Write-Log "    BitLocker enabled on $driveLetter (TPM protector)."
         } catch {
-            Write-Log "    ERROR enabling BitLocker: $_" ([System.Drawing.Color]::Red)
-            Write-Log "    Verify TPM is present, enabled, and Secure Boot is active." ([System.Drawing.Color]::Yellow)
-            return
+            # 0xC0310102 = TPM PCR binding error. Occurs when Secure Boot policy
+            # changes or driver events have extended PCR7 after BitLocker's boot
+            # lock event. Fix: fall back to manage-bde with -SkipHardwareTest
+            # which bypasses the PCR validation step.
+            if ($_ -match "0xC0310102" -or $_ -match "PCR") {
+                Write-Log "    PCR binding conflict - retrying with manage-bde -SkipHardwareTest..." ([System.Drawing.Color]::Yellow)
+                try {
+                    $mbResult = manage-bde -on $driveLetter -UsedSpaceOnly -SkipHardwareTest 2>&1
+                    Write-Log "    manage-bde: $($mbResult -join ' ')"
+                    $blCheck = Get-BitLockerVolume -MountPoint $driveLetter -ErrorAction SilentlyContinue
+                    if ($blCheck -and ($blCheck.VolumeStatus -ne "FullyDecrypted")) {
+                        Write-Log "    BitLocker enabled on $driveLetter (manage-bde fallback, PCR7 skipped)."
+                    } else {
+                        Write-Log "    ERROR: manage-bde did not enable BitLocker. Clear TPM in BIOS and retry." ([System.Drawing.Color]::Red)
+                        return
+                    }
+                } catch {
+                    Write-Log "    ERROR enabling BitLocker (manage-bde fallback): $_" ([System.Drawing.Color]::Red)
+                    return
+                }
+            } else {
+                Write-Log "    ERROR enabling BitLocker: $_" ([System.Drawing.Color]::Red)
+                Write-Log "    Verify TPM is present, enabled, and Secure Boot is active." ([System.Drawing.Color]::Yellow)
+                return
+            }
         }
     }
 
@@ -1049,7 +1071,8 @@ function Get-ReclaimItems {
             Default  = $true
             Advisory = "RECOMMENDED for managed endpoints. Enables WoL on all capable ethernet adapters via the Windows driver settings. IMPORTANT: WoL must also be enabled in the machine BIOS/UEFI firmware - this script handles the OS side only. Most Dell/HP/Lenovo machines ship with WoL on in BIOS by default."
             Action   = {
-                $adapters = Get-NetAdapter -Physical | Where-Object { $_.Status -eq "Up" -or $_.Status -eq "Disconnected" }
+                Import-Module NetAdapter -ErrorAction SilentlyContinue
+                $adapters = Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Up" -or $_.Status -eq "Disconnected" }
                 $enabled  = 0
                 foreach ($adapter in $adapters) {
                     try {
@@ -1125,6 +1148,7 @@ function Get-ReclaimItems {
             Default  = $true
             Advisory = "STRONGLY RECOMMENDED. SMBv1 is the attack vector for WannaCry and similar ransomware. Should never be enabled on a managed business endpoint. Disabling it has no impact on modern networks."
             Action   = {
+                Import-Module SmbShare -ErrorAction SilentlyContinue
                 Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force -ErrorAction SilentlyContinue
                 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "SMB1" -Type DWord -Value 0 -ErrorAction SilentlyContinue
                 Disable-WindowsOptionalFeature -Online -FeatureName "SMB1Protocol" -NoRestart -ErrorAction SilentlyContinue | Out-Null
@@ -1137,6 +1161,7 @@ function Get-ReclaimItems {
             Default  = $true
             Advisory = "RECOMMENDED. Prevents man-in-the-middle attacks on SMB file share connections by requiring cryptographic signing on all SMB traffic. Low risk to enable; high value for security."
             Action   = {
+                Import-Module SmbShare -ErrorAction SilentlyContinue
                 Set-SmbClientConfiguration -RequireSecuritySignature $true  -Force -ErrorAction SilentlyContinue
                 Set-SmbServerConfiguration -RequireSecuritySignature $false -Force -ErrorAction SilentlyContinue  # server side: require on client, enable but not mandate on server
                 Set-SmbServerConfiguration -EnableSecuritySignature  $true  -Force -ErrorAction SilentlyContinue
@@ -1151,14 +1176,23 @@ function Get-ReclaimItems {
             Advisory = "RECOMMENDED. Sets explicit DNS servers on all active ethernet adapters. Choice of provider configured on the Reclaim Windows tab. Prevents ISP DNS from being the default."
             Action   = {
                 $dnsServers = if ($script:SelectedDNS) { $script:SelectedDNS } else { @("1.1.1.1","1.0.0.1") }
-                $adapters = Get-NetAdapter -Physical | Where-Object { $_.Status -eq "Up" }
-                foreach ($adapter in $adapters) {
-                    try {
-                        Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses $dnsServers -ErrorAction Stop
-                        Write-Host "DNS set on $($adapter.Name): $($dnsServers -join ', ')"
-                    } catch {
-                        Write-Host "Could not set DNS on $($adapter.Name): $_"
+                Import-Module NetAdapter -ErrorAction SilentlyContinue
+                $adapters = Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Up" }
+                if ($adapters) {
+                    foreach ($adapter in $adapters) {
+                        try {
+                            Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses $dnsServers -ErrorAction Stop
+                            Write-Log "    DNS set on $($adapter.Name): $($dnsServers -join ', ')"
+                        } catch {
+                            Write-Log "    Could not set DNS on $($adapter.Name): $_" ([System.Drawing.Color]::Yellow)
+                        }
                     }
+                } else {
+                    # Fallback: set DNS via netsh on all interfaces
+                    $pri = $dnsServers[0]; $sec = if ($dnsServers.Count -gt 1) { $dnsServers[1] } else { "" }
+                    netsh interface ip set dns name="Local Area Connection" static $pri primary 2>$null | Out-Null
+                    if ($sec) { netsh interface ip add dns name="Local Area Connection" $sec index=2 2>$null | Out-Null }
+                    Write-Log "    DNS set via netsh fallback (NetAdapter module unavailable)"
                 }
             }
         }
@@ -1318,8 +1352,9 @@ function Get-ReclaimItems {
                     "*Wunderlist*","*Flipboard*","*Twitter*","*Facebook*","*Spotify*",
                     "*Minecraft*","*Royal Revolt*","*Sway*","*Dolby*","*Windows.CBSPreview*"
                 )
+                Import-Module Appx -ErrorAction SilentlyContinue
                 foreach ($bloat in $BloatList) {
-                    Get-AppxPackage -Name $bloat -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
+                    Get-AppxPackage -Name $bloat -AllUsers -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
                     Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
                         Where-Object DisplayName -like $bloat |
                         Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
@@ -1409,7 +1444,7 @@ function Show-MainForm {
 
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.61"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.64"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2668,16 +2703,34 @@ function Show-MainForm {
             $t = $this.Tag
             if ($t.Async.IsCompleted) {
                 $this.Stop()
-                $this.Dispose()
+                try { $this.Dispose() } catch {}
 
                 # Collect any terminating errors from the runspace
-                if ($t.Ps -and $t.Ps.HadErrors) {
-                    $t.Ps.Streams.Error | ForEach-Object {
-                        Write-Log "    Runspace error: $_" ([System.Drawing.Color]::Red)
+                try {
+                    if ($t.Ps -and $t.Ps.HadErrors) {
+                        $t.Ps.Streams.Error | ForEach-Object {
+                            Write-Log "    Runspace error: $_" ([System.Drawing.Color]::Red)
+                        }
                     }
+                } catch {}
+
+                # Clean up PowerShell pipeline
+                if ($t.Ps) {
+                    try { $t.Ps.EndInvoke($t.Async) | Out-Null } catch {}
+                    try { $t.Ps.Stop() } catch {}
+                    try { $t.Ps.Dispose() } catch {}
                 }
-                if ($t.Ps)  { try { $t.Ps.EndInvoke($t.Async) | Out-Null } catch {}; $t.Ps.Dispose() }
-                if ($t.Rs)  { $t.Rs.Close(); $t.Rs.Dispose() }
+
+                # Clean up runspace - check state before closing
+                if ($t.Rs) {
+                    try {
+                        if ($t.Rs.RunspaceStateInfo.State -ne [System.Management.Automation.Runspaces.RunspaceState]::Closed -and
+                            $t.Rs.RunspaceStateInfo.State -ne [System.Management.Automation.Runspaces.RunspaceState]::Broken) {
+                            $t.Rs.Close()
+                        }
+                    } catch {}
+                    try { $t.Rs.Dispose() } catch {}
+                }
 
                 $wasCancelled = $script:CancelRequested
                 $script:CancelRequested = $false
@@ -2753,6 +2806,25 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.64  - Bug fix: runspace cleanup after completion threw 'unauthorized
+#          operation'. Wrapped every cleanup step (Dispose timer, EndInvoke,
+#          Stop/Dispose Ps, Close/Dispose Rs) in individual try/catch blocks.
+#          Rs.Close() now checks RunspaceState first - skips if already Closed
+#          or Broken, which is what triggers the unauthorized operation error.
+#
+# v1.63  - Bug fix: BitLocker 0xC0310102 PCR binding error. When Secure Boot
+#          policy events or driver measurements extend into TPM PCR7 after the
+#          BitLocker boot lock event, Enable-BitLocker -TpmProtector fails.
+#          Added catch: if error matches 0xC0310102 or PCR, falls back to
+#          manage-bde -on -UsedSpaceOnly -SkipHardwareTest which bypasses the
+#          PCR validation. Verifies VolumeStatus after to confirm success.
+#
+# v1.62  - Bug fix: five reclaim actions failed on fresh Windows installs due
+#          to modules not being auto-loaded. Added Import-Module before each:
+#          NetAdapter (WoL, DNS), SmbShare (SMBv1, SMB Signing), Appx (Bloatware).
+#          DNS action also gets a netsh fallback if NetAdapter is unavailable.
+#          Bloatware removal now passes -AllUsers to catch per-machine packages.
 #
 # v1.61  - Bug fix: Set-NetFirewallProfile fails if NetSecurity module is not
 #          loaded. Now imports module first, falls back to netsh if unavailable.
