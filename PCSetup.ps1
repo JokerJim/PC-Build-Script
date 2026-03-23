@@ -337,20 +337,18 @@ function Invoke-EnableBitLocker {
                 Write-Log "    PCR binding conflict - retrying with manage-bde -SkipHardwareTest..." ([System.Drawing.Color]::Yellow)
                 try {
                     $mbResult = manage-bde -on $driveLetter -SkipHardwareTest 2>&1
-                    $mbText = $mbResult -join ' '
-                    Write-Log "    manage-bde: $mbText"
-                    # manage-bde outputs success text in multiple languages; check for key phrases
-                    # or fall back to VolumeStatus (may still be FullyDecrypted while queued)
+                    foreach ($line in $mbResult) { Write-Log "    manage-bde: $line" }
+                    # Give manage-bde a moment to update the volume state
+                    Start-Sleep -Seconds 2
                     $blCheck = Get-BitLockerVolume -MountPoint $driveLetter -ErrorAction SilentlyContinue
-                    $mbSuccess = ($mbText -match "percentage completed") -or
-                                 ($mbText -match "encryption in progress") -or
-                                 ($blCheck -and $blCheck.VolumeStatus -ne "FullyDecrypted") -or
-                                 ($blCheck -and $blCheck.EncryptionPercentage -gt 0)
-                    if ($mbSuccess) {
+                    if ($blCheck -and $blCheck.VolumeStatus -ne "FullyDecrypted") {
                         Write-Log "    BitLocker enabled on $driveLetter (manage-bde fallback, PCR7 skipped)."
+                    } elseif ($blCheck -and $blCheck.EncryptionPercentage -gt 0) {
+                        Write-Log "    BitLocker encryption started on $driveLetter ($($blCheck.EncryptionPercentage)% complete)."
                     } else {
-                        Write-Log "    ERROR: manage-bde did not enable BitLocker. Clear TPM in BIOS and retry." ([System.Drawing.Color]::Red)
-                        return
+                        # manage-bde may have succeeded even if VolumeStatus hasn't updated yet.
+                        # Proceed to recovery key step - if BitLocker truly failed it will surface there.
+                        Write-Log "    manage-bde completed. Proceeding to recovery key step to confirm state." ([System.Drawing.Color]::Yellow)
                     }
                 } catch {
                     Write-Log "    ERROR enabling BitLocker (manage-bde fallback): $_" ([System.Drawing.Color]::Red)
@@ -1453,7 +1451,7 @@ function Show-MainForm {
 
 
     $lblTitle              = New-Object System.Windows.Forms.Label
-    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.65"
+    $lblTitle.Text         = "Pirum Consulting LLC  |  PC Setup & Configuration Tool  |  v1.66"
     $lblTitle.Font         = $segHdr
     $lblTitle.ForeColor    = $clrWhite
     $lblTitle.AutoSize     = $true
@@ -2714,11 +2712,19 @@ function Show-MainForm {
                 $this.Stop()
                 try { $this.Dispose() } catch {}
 
-                # Collect any terminating errors from the runspace
+                # Ps.Streams.Error contains terminating errors from the work script.
+                # Log them via AppendText directly - Write-Log may fail during cleanup
+                # if the LogBox state has changed.
                 try {
                     if ($t.Ps -and $t.Ps.HadErrors) {
+                        $lb = $logBox
                         $t.Ps.Streams.Error | ForEach-Object {
-                            Write-Log "    Runspace error: $_" ([System.Drawing.Color]::Red)
+                            if ($lb) {
+                                $lb.SelectionStart  = $lb.TextLength
+                                $lb.SelectionLength = 0
+                                $lb.SelectionColor  = [System.Drawing.Color]::Red
+                                $lb.AppendText("    Runspace error: $_`n")
+                            }
                         }
                     }
                 } catch {}
@@ -2817,6 +2823,14 @@ Show-MainForm
 # ============================================================
 # VERSION HISTORY
 # ============================================================
+#
+# v1.66  - Bug fix: manage-bde success detection was too narrow - output text
+#          varies by Windows locale and build. Replaced with 2s sleep + state
+#          check. If state still shows FullyDecrypted, proceeds anyway and lets
+#          the recovery key step confirm actual BitLocker state.
+#        - Bug fix: runspace error at end was Ps.Streams.Error entries being
+#          logged via Write-Log during cleanup (which can fail post-completion).
+#          Replaced with direct AppendText using the closure-captured $logBox.
 #
 # v1.65  - Bug fix: Disable-WindowsOptionalFeature and Get-AppxProvisionedPackage
 #          both live in the Dism module, not SmbShare/Appx. Added Import-Module
