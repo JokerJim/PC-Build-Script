@@ -20,7 +20,7 @@ Set-ExecutionPolicy RemoteSigned -Scope Process -Force
 # ============================================================
 $script:BaselineApps = @(
     [PSCustomObject]@{ Name = "Google Chrome";          ChocoID = "googlechrome";                Default = $true  }
-    [PSCustomObject]@{ Name = "Mozilla Firefox";        ChocoID = "firefox";                     Default = $true  }
+    [PSCustomObject]@{ Name = "Mozilla Firefox";        ChocoID = "firefox";                     Default = $false }
     [PSCustomObject]@{ Name = "Adobe Acrobat Reader";   ChocoID = "adobereader";                 Default = $true  }
     [PSCustomObject]@{ Name = "Zoom";                   ChocoID = "zoom";                        Default = $true  }
     [PSCustomObject]@{ Name = "7-Zip";                  ChocoID = "7zip";                        Default = $true  }
@@ -300,16 +300,16 @@ function Invoke-EnableBitLocker {
     param([string]$PendingHostname = "")
     Write-Log ">>> Enabling BitLocker on C: drive..."
 
-    # Find the CustData drive by volume label
-    $custVol = Get-Volume | Where-Object { $_.FileSystemLabel -eq "CustData" } | Select-Object -First 1
+    # Find the ClientData drive by volume label
+    $custVol = Get-Volume | Where-Object { $_.FileSystemLabel -eq "ClientData" } | Select-Object -First 1
     if (-not $custVol) {
-        Write-Log "    CustData drive not found. Connect the USB drive and try again." ([System.Drawing.Color]::Red)
+        Write-Log "    ClientData drive not found. Connect the USB drive and try again." ([System.Drawing.Color]::Red)
         Write-Log "    BitLocker will NOT be enabled without a confirmed key backup destination." ([System.Drawing.Color]::Red)
         return
     }
     $keyDrive  = "$($custVol.DriveLetter):"
     $keyFolder = "$keyDrive\BitLocker"
-    Write-Log "    CustData drive found at $keyDrive. Keys will be saved to $keyFolder"
+    Write-Log "    ClientData drive found at $keyDrive. Keys will be saved to $keyFolder"
 
     # Ensure key backup folder exists
     if (-not (Test-Path $keyFolder)) {
@@ -1695,7 +1695,7 @@ function Show-MainForm {
     $cbDomain        = Add-CheckRow $pMain "Join Domain  (will prompt for domain name and credentials)" $false "Prompts for domain name and optional OU path, then joins the machine to the domain." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "Security" $y
-    $cbBitLocker     = Add-CheckRow $pMain "Enable BitLocker on C:  (requires CustData USB drive connected)" $true "Enables BitLocker with TPM protector and saves recovery key to \BitLocker on the CustData USB drive." $y; $y += 22
+    $cbBitLocker     = Add-CheckRow $pMain "Enable BitLocker on C:  (requires ClientData USB drive connected)" $true "Enables BitLocker with TPM protector and saves recovery key to \BitLocker on the ClientData USB drive." $y; $y += 22
     $cbSystemRestore = Add-CheckRow $pMain "Create System Restore Point  (Initial Provisioning)" $true "Enables System Restore on C: and creates a named restore point." $y; $y += 22
     $cbTPMReport     = Add-CheckRow $pMain "Log TPM and Secure Boot Status" $true "Documents TPM version, state, Secure Boot, and firmware type in the log." $y; $y += 26
 
@@ -3056,7 +3056,7 @@ Show-MainForm
 #          OEM branding, wallpaper, lock screen, user account pictures.
 #          Management: NinjaOne RMM, Action1, Instant Housecall - each with
 #          path/URL field, browse button, auto-detection of MSI vs EXE.
-#          Security: BitLocker (TPM protector, recovery key saved to CustData USB
+#          Security: BitLocker (TPM protector, recovery key saved to ClientData USB
 #          with hostname-prefixed filename; uses pending hostname if rename is
 #          scheduled), System Restore Point (Initial Provisioning), TPM and Secure
 #          Boot status logging.
