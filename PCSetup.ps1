@@ -202,18 +202,18 @@ function Invoke-InstallCustomApp {
 }
 
 # ============================================================
-# SECTION: Defender Exclusion (Utilities USB drive)
+# SECTION: Defender Exclusion (Tools USB drive)
 # ============================================================
 function Invoke-AddDefenderExclusion {
     Write-Log ">>> Adding Windows Defender exclusion for tech tools drive..."
-    $utilitiesVol = Get-Volume | Where-Object { $_.FileSystemLabel -eq "Utilities" } | Select-Object -First 1
-    if (-not $utilitiesVol) {
-        Write-Log "    Utilities drive not found (not connected?). Skipping exclusion." ([System.Drawing.Color]::Yellow)
+    $ToolsVol = Get-Volume | Where-Object { $_.FileSystemLabel -eq "Tools" } | Select-Object -First 1
+    if (-not $ToolsVol) {
+        Write-Log "    Tools drive not found (not connected?). Skipping exclusion." ([System.Drawing.Color]::Yellow)
         return
     }
-    $excludePath = "$($utilitiesVol.DriveLetter):\_Collections\_TechToolStore"
+    $excludePath = "$($ToolsVol.DriveLetter):\_Collections\_TechToolStore"
     if (-not (Test-Path $excludePath)) {
-        Write-Log "    Path not found on Utilities drive: $excludePath. Skipping." ([System.Drawing.Color]::Yellow)
+        Write-Log "    Path not found on Tools drive: $excludePath. Skipping." ([System.Drawing.Color]::Yellow)
         return
     }
     $existing = (Get-MpPreference).ExclusionPath
@@ -1675,7 +1675,7 @@ function Show-MainForm {
     $y += 26
 
     $cbPower         = Add-CheckRow $pMain "Apply Pirum Power Profile  (no sleep on AC, high-perf CPU)" $true "Creates a custom power scheme with high-performance CPU settings." $y; $y += 22
-    $cbDefenderExcl  = Add-CheckRow $pMain "Add Defender Exclusion  (Utilities USB: _Collections\_TechToolStore)" $true "Finds the Utilities USB drive by label and adds the tech tools folder to Defender exclusions. Skipped if drive not connected or exclusion already exists." $y; $y += 26
+    $cbDefenderExcl  = Add-CheckRow $pMain "Add Defender Exclusion  (Tools USB: _Collections\_TechToolStore)" $true "Finds the Tools USB drive by label and adds the tech tools folder to Defender exclusions. Skipped if drive not connected or exclusion already exists." $y; $y += 26
 
     $y = Add-SectionLabel $pMain "Applications" $y
     $cbInstallChoco  = Add-CheckRow $pMain "Install Chocolatey  (required before any app installs)" $true "Installs the Chocolatey package manager. Skipped if already installed." $y; $y += 22
@@ -3043,7 +3043,7 @@ Show-MainForm
 # v1.0   - Initial versioned release. Compiled from development session.
 #          Features at this version:
 #          Core: PC naming (Pirum format), time zone, Pirum power profile with
-#          high-performance CPU settings, Windows Defender exclusion for Utilities
+#          high-performance CPU settings, Windows Defender exclusion for Tools
 #          USB drive (_Collections\_TechToolStore).
 #          Applications: Chocolatey install, baseline app list with per-app
 #          checkboxes, Select All/Deselect All/Reset buttons, Microsoft 365
